@@ -112,6 +112,10 @@ fallback makes the choice explicit and recorded in results.
 
 ## 6. Training / fitting (opt-in)
 
+> **Training has its own full spec: [training.md](training.md).** It defines the `Trainer`
+> port, the backtest pause-train-resume mechanics, the sync-vs-async asymmetry between backtest
+> and live, refit caching, and the shared-package architecture. This section is a summary.
+
 When a strategy opts in (`training.enabled`), the engine:
 
 1. Determines refit points from `schedule` (e.g. rolling 1y window, monthly step).

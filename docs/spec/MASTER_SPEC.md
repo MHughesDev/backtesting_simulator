@@ -217,7 +217,9 @@ simulates, so a strategy behaves identically in backtest and live.
 | Concern | Owner |
 |---|---|
 | Historical market data | **Caller** |
-| AI model weights & training algorithms | **Caller** |
+| AI model weights & training **algorithms** (the `Trainer` impl, injected) | **Caller** |
+| *When* to retrain + assembling point-in-time training data + pause-train-resume | **Suite** |
+| Live async training orchestration + hot-swap | **Caller** |
 | Strategy storage, versioning, user selection | **Caller** |
 | Live trading / order execution (parity with suite) | **Caller** |
 | Job orchestration, UI | **Caller** |
@@ -255,6 +257,8 @@ simulates, so a strategy behaves identically in backtest and live.
 | OD-8 | Run Request schema: data bindings, dates, capital, seeds, parameter sweeps (separate from Strategy JSON) | `spec/run-request.md` (TBD) |
 | OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | `spec/contracts/strategy.md` §15 |
 | OD-10 | Model registry & reproducibility: stable `model_id@version` resolution over time | `spec/contracts/model.md` §8 |
+| OD-11 | Training repo topology: extract standalone `*-contracts` package vs. depend on this repo's `crates/contracts` | [ADR-0007](../adr/0007-shared-training-pipeline-port.md) |
+| OD-12 | Validation gating of freshly trained artifacts (reject-and-keep-incumbent policy) | `spec/contracts/training.md` §8 |
 
 ---
 
@@ -278,6 +282,11 @@ simulates, so a strategy behaves identically in backtest and live.
 | **Component registry** | The store of named, typed, reusable code components (indicators, alpha/sizing functions, selectors) that strategy JSON references by ID |
 | **Run Request** | The per-invocation document (separate from Strategy JSON) binding data, dates, capital, seeds, and parameter values/sweeps |
 | **Walk-forward** | Refitting a model on a rolling point-in-time window so no future data leaks into training |
+| **Trainer (port)** | The injected interface the suite calls to (re)train a model; implemented by the shared training package, never by the suite |
+| **Model artifact** | The versioned output of a training run (a registry handle); the suite stores no weights |
+| **Refit cache** | Cache keyed by `(base_version, method, data_window, params, seed)` so identical training is done once across refits and sweeps |
+| **Hot-swap** | Replacing the active model version with a newly trained one (atomic at sim time in backtest; async in live) |
+| **Pause-train-resume** | Backtest mechanic: freeze the sim clock at a refit point, train on PIT data, swap the model, resume |
 | **Parity** | The guarantee that a strategy behaves identically in backtest and live, differing only in data feed |
 | **Clean price** | Bond quoted price excluding accrued coupon interest |
 | **Dirty price** | Bond actual purchase price = clean price + accrued interest |

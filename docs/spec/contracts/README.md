@@ -15,6 +15,7 @@ under-specified or malformed inputs with precise error messages.
 | 2 | **Market Data** | Caller → Suite | [market-data.md](market-data.md) |
 | 3 | **Strategy** | Caller supplies as JSON at runtime, Suite compiles & drives | [strategy.md](strategy.md) |
 | 4 | **Model** | Caller implements, Suite calls | [model.md](model.md) |
+| 4b | **Training** (the `Trainer` port) | Caller implements, Suite orchestrates | [training.md](training.md) |
 | 5 | **Result / Metrics** | Suite → Caller | [metrics.md](metrics.md) *(TBD)* |
 
 > The suite **stores no strategies** — they are passed in at runtime, compiled, run, and

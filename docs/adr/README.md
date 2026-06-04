@@ -38,3 +38,4 @@ Proposed → Accepted → (later) Superseded by ADR-XXXX
 | [0004](0004-strategy-json-pipeline.md) | Strategy = a single JSON declarative pipeline | Accepted |
 | [0005](0005-strategy-not-stored-suite-is-a-library.md) | Suite processes but never stores strategies (library boundary) | Accepted |
 | [0006](0006-model-inference-and-training.md) | AI models — inference by default, opt-in PIT training | Accepted |
+| [0007](0007-shared-training-pipeline-port.md) | Training is a shared pipeline invoked through a port | Proposed |
