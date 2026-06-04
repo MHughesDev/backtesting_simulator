@@ -13,9 +13,14 @@ under-specified or malformed inputs with precise error messages.
 |---|---|---|---|
 | 1 | **Instrument** | Caller → Suite | [instrument.md](instrument.md) |
 | 2 | **Market Data** | Caller → Suite | [market-data.md](market-data.md) |
-| 3 | **Strategy** | Caller implements, Suite drives | [strategy.md](strategy.md) *(TBD)* |
-| 4 | **Model** | Caller implements, Suite calls | [model.md](model.md) *(TBD)* |
+| 3 | **Strategy** | Caller supplies as JSON at runtime, Suite compiles & drives | [strategy.md](strategy.md) |
+| 4 | **Model** | Caller implements, Suite calls | [model.md](model.md) |
 | 5 | **Result / Metrics** | Suite → Caller | [metrics.md](metrics.md) *(TBD)* |
+
+> The suite **stores no strategies** — they are passed in at runtime, compiled, run, and
+> discarded. Strategies are expressed in **one format only: JSON** (see
+> [ADR-0004](../../adr/0004-strategy-json-pipeline.md),
+> [ADR-0005](../../adr/0005-strategy-not-stored-suite-is-a-library.md)).
 
 ## Core design rules
 

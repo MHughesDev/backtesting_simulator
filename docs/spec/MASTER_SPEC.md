@@ -208,15 +208,23 @@ Full spec: [runner.md](runner.md) *(TBD)*
 
 ## 8. Integration boundary
 
+The suite is a **library**: it processes strategies passed in at runtime and **stores
+nothing** — not strategies, users, data, or models (see
+[ADR-0005](../adr/0005-strategy-not-stored-suite-is-a-library.md)). The trading platform owns
+all product state and a live engine that honors the *same* order/execution semantics the suite
+simulates, so a strategy behaves identically in backtest and live.
+
 | Concern | Owner |
 |---|---|
 | Historical market data | **Caller** |
-| AI model weights & training | **Caller** |
-| Strategy authoring | **Caller** (using our Strategy Contract) |
-| Job orchestration, UI, live trading | **Caller** |
+| AI model weights & training algorithms | **Caller** |
+| Strategy storage, versioning, user selection | **Caller** |
+| Live trading / order execution (parity with suite) | **Caller** |
+| Job orchestration, UI | **Caller** |
+| Strategy JSON format & validation | **Suite** |
 | Instrument & market-data contracts | **Suite** |
 | Engines, fills, valuation | **Suite** |
-| Strategy & model *interfaces* | **Suite** |
+| Strategy & model *interfaces* (not their content) | **Suite** |
 | Run queue primitive | **Suite** |
 | Data manifest validation and error reporting | **Suite** |
 
@@ -241,7 +249,12 @@ Full spec: [runner.md](runner.md) *(TBD)*
 | OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `spec/runner.md` |
 | OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | `ADR-0002` |
 | OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | `spec/engines/engine-e-derivatives.md` |
-| OD-5 | Strategy-authoring form: Python callbacks vs. compiled strategy graph/DSL | `spec/contracts/strategy.md` |
+| ~~OD-5~~ | ~~Strategy-authoring form~~ → **Resolved:** single JSON declarative pipeline + component registry; no `on_event` blob | [ADR-0004](../adr/0004-strategy-json-pipeline.md) |
+| OD-6 | Multi-strategy portfolios: one run = one strategy, or shared capital pool with portfolio-level netting/risk | `spec/contracts/strategy.md` §15 |
+| OD-7 | Component registry trust model: Rust / PyO3 / WASM, and sandboxing for determinism | `spec/contracts/strategy.md` §15 |
+| OD-8 | Run Request schema: data bindings, dates, capital, seeds, parameter sweeps (separate from Strategy JSON) | `spec/run-request.md` (TBD) |
+| OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | `spec/contracts/strategy.md` §15 |
+| OD-10 | Model registry & reproducibility: stable `model_id@version` resolution over time | `spec/contracts/model.md` §8 |
 
 ---
 
@@ -261,6 +274,11 @@ Full spec: [runner.md](runner.md) *(TBD)*
 | **Continuous contract** | A synthetic time-series constructed from rolling expiring futures contracts |
 | **IV surface** | A 2D grid of implied volatility by strike and expiry at a given point in time |
 | **Brier score** | Calibration metric for probabilistic forecasts; primary metric for prediction-market strategies |
+| **Insight** | An alpha-stage output: direction + confidence per instrument |
+| **Component registry** | The store of named, typed, reusable code components (indicators, alpha/sizing functions, selectors) that strategy JSON references by ID |
+| **Run Request** | The per-invocation document (separate from Strategy JSON) binding data, dates, capital, seeds, and parameter values/sweeps |
+| **Walk-forward** | Refitting a model on a rolling point-in-time window so no future data leaks into training |
+| **Parity** | The guarantee that a strategy behaves identically in backtest and live, differing only in data feed |
 | **Clean price** | Bond quoted price excluding accrued coupon interest |
 | **Dirty price** | Bond actual purchase price = clean price + accrued interest |
 | **Roll yield** | Gain or loss from rolling an expiring futures contract; positive in backwardation, negative in contango |
