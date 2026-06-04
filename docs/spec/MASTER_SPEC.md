@@ -1,40 +1,49 @@
 # Master Specification
 
-**Document status:** Draft · living document
-**Scope:** High-level, end-to-end overview of the entire backtesting suite.
-**Audience:** Anyone building, integrating with, or evaluating the system.
-
-This is the map. It states *what* the system is and how its parts fit together, and links
-out to detailed per-area specs, decision records (ADRs), and research. When a section says
-"detailed spec TBD," the authoritative detail will live under `docs/spec/` as a separate
-document; this file stays high-level.
+**Status:** Living document — sections expand as sub-specs are written.
+**Role:** The north-star overview. Every significant detail lives in a linked sub-spec;
+this file states the principles once and routes you to the right place.
 
 ---
 
-## 1. Purpose
+## Table of contents
 
-A **standalone, headless backtesting engine** that simulates trading strategies against
-historical data across *every* digital asset class. It is the processing core that an
-external trading platform (or any caller with conforming data contracts) utilizes — it is
-not itself a platform, broker, data vendor, or UI.
+1. [Purpose and non-goals](#1-purpose-and-non-goals)
+2. [Foundational principles](#2-foundational-principles)
+3. [System map (end-to-end)](#3-system-map-end-to-end)
+4. [Asset taxonomy](#4-asset-taxonomy) → `spec/assets/`
+5. [The five contracts](#5-the-five-contracts) → `spec/contracts/`
+6. [Execution engines](#6-execution-engines) → `spec/engines/`
+7. [Run queue and execution model](#7-run-queue-and-execution-model) → `spec/runner.md`
+8. [Integration boundary](#8-integration-boundary)
+9. [Performance approach](#9-performance-approach)
+10. [Open decisions](#10-open-decisions)
+11. [Glossary](#11-glossary)
+
+---
+
+## 1. Purpose and non-goals
+
+A **standalone, headless backtesting engine** for simulating trading strategies against
+historical data. It is the processing core a trading platform (or any conforming caller)
+utilizes — not itself a platform, broker, data vendor, or UI.
 
 ### Goals
 
-1. **Universal** — one contract spine spanning order-book spot, AMM pools, funds, debt, FX,
-   futures, perpetuals, options, structured products, NFTs, and event markets.
-2. **Realistic** — event-driven, path-dependent simulation (order-book matching, AMM price
-   impact, funding/liquidation, derivatives valuation), not vectorized signal replay only.
-3. **Fast** — minimize start-to-finish run latency; run many backtests concurrently (a
-   first-class run queue).
-4. **Embeddable** — callable from Python and other hosts so a trading platform can drive it.
-5. **Honest** — reject under-specified runs with precise contract errors rather than produce
-   plausible-but-wrong results.
+1. **Universal** — one contract spine spanning every tradable asset class.
+2. **Realistic** — event-driven, path-dependent simulation (order matching, AMM pricing,
+   funding/liquidation, derivatives valuation) not just vectorized signal replay.
+3. **Fast** — minimize start-to-finish run latency; first-class run queue for many concurrent
+   backtests. See [ADR-0001](../adr/0001-runtime-rust-python-hybrid.md).
+4. **Embeddable** — exposed to Python so a trading platform can drive it.
+5. **Honest** — reject under-specified runs with precise errors; never silently
+   produce plausible-but-wrong P&L.
 
 ### Non-goals
 
 - No live order execution, brokerage, or UI.
-- **No data ownership.** The caller provides data; the suite validates and processes it.
-- **No model ownership.** AI models are a called dependency, not stored/trained here.
+- **No data ownership.** The caller supplies data satisfying our contracts.
+- **No model ownership.** AI models are a called dependency; never trained or stored here.
 
 ---
 
@@ -42,260 +51,218 @@ not itself a platform, broker, data vendor, or UI.
 
 | Principle | Statement |
 |---|---|
-| **Asset ≠ Engine** | Asset category does not determine simulation. *Price formation* selects the engine. |
-| **Venue + Contract → Engine** | The pairing of where it trades and what it is determines mechanics, expressed via the instrument's `price_formation` field. |
-| **Capabilities, not type switches** | Instruments advertise capability flags; engines/strategies react to capabilities. No `match asset_type` in engine logic. |
-| **Thin required spine** | A small required event envelope; everything else is a typed, opt-in payload variant. |
-| **Required is relative** | "Required" data is defined per (instrument, engine) via a data manifest — not globally. |
-| **Provide-or-derive** | Some values (e.g. greeks) may be supplied by the caller or computed by the engine if absent. |
-| **Own the IP, rent the infrastructure** | Build anything that defines a trade/price/payoff/metric; depend only on unopinionated formats/runtime. See ADR-0002. |
+| **Asset ≠ Engine** | Asset *category* does not determine simulation. *Price formation* does. |
+| **Venue + Contract → Engine** | The `price_formation` field on an instrument selects the engine — the only place where the routing decision is made. |
+| **Capabilities, not type switches** | Instruments advertise capability flags. Engines and strategies react to capabilities. No `match asset_type` anywhere in engine logic. |
+| **Thin required spine, opt-in payloads** | Every event shares a small required envelope; payloads are typed variants, gated by capability. |
+| **Required is relative** | "Required" data is declared per `(instrument, engine)` by a **data manifest** — not globally. |
+| **Provide-or-derive** | Some values (greeks, continuous price) may be supplied by caller or computed by the engine if absent. |
+| **Own the contracts** | Anything defining a trade, price, payoff, or metric is built in-house. See [ADR-0002](../adr/0002-minimal-external-dependencies.md). |
+| **Fail loudly on under-specification** | A run that does not satisfy its data manifest produces a contract error, not garbage results. |
 
 ---
 
-## 3. Architecture hierarchy
+## 3. System map (end-to-end)
 
-The conceptual stack from economics down to agents:
+This is the full call chain from a caller submitting a backtest to receiving results:
 
 ```
-Economic Primitive   (ownership, lending, exchange, future-promise, rights,
-        │             synthetic, custom-payoff, event-outcome)
-        ▼
-Venue Mechanics      (CLOB · AMM · NAV · Dealer · Quote-driven · OTC · Marketplace · Oracle)
-        ▼
-Execution Engine     (A–H — selected by price_formation)
-        ▼
-Contract Type        (spot, future, perpetual, option, note, pool, bond, NFT, …)
-        ▼
-Valuation Model      (mark, NAV, cash-flow/yield, greeks/vol, payoff, floor/oracle)
-        ▼
-Instrument           (a concrete tradable, carrying identity + capabilities + metadata)
-        ▼
-Strategy             (universal interface; capability-gated asset features)
-        ▼
-Portfolio  →  Risk  →  AI Agent
+Caller (trading platform or any tool)
+  │
+  │  provides:
+  │    ─ Instrument definitions  (satisfying Instrument Contract)
+  │    ─ Historical market data  (satisfying Market Data Contract per instrument)
+  │    ─ Strategy implementation (satisfying Strategy Contract)
+  │    ─ [optional] AI model     (satisfying Model Contract)
+  │
+  ▼
+┌─────────────────────────────────────────────────────────┐
+│  backtesting_suite                                      │
+│                                                         │
+│  Contract Validator                                     │
+│    ├─ Validates instrument definitions                  │
+│    └─ Validates data manifest per (instrument, engine)  │
+│         → rejects with precise error if under-specified │
+│                                                         │
+│  Run Queue (crates/runner)                              │
+│    └─ Schedules single or many concurrent runs          │
+│                                                         │
+│  Single Run                                             │
+│    ├─ Deterministic clock (ts_event ordering, ns UTC)   │
+│    ├─ Event stream (MarketEvent replay)                 │
+│    ├─ Engine (selected by price_formation)              │
+│    │    ├─ A  Order Book                                │
+│    │    ├─ B  AMM                                       │
+│    │    ├─ C  NAV                                       │
+│    │    ├─ D  Cash Flow                                 │
+│    │    ├─ E  Derivatives                               │
+│    │    ├─ F  Synthetic                                 │
+│    │    ├─ G  Marketplace                               │
+│    │    └─ H  Event Resolution                          │
+│    ├─ Strategy (on_event callback)                      │
+│    │    └─ MarketView (capability-gated accessors)      │
+│    └─ [optional] Model (inference-only, no look-ahead)  │
+│                                                         │
+│  Metrics Collector                                      │
+│    ├─ Universal metrics (returns, Sharpe, drawdown, …)  │
+│    └─ Per-capability extensions (funding P&L, greeks    │
+│         attribution, slippage/gas, Brier score, …)      │
+└─────────────────────────────────────────────────────────┘
+  │
+  ▼
+Result (satisfying Result/Metrics Contract)
+  └─ returned to caller
 ```
 
-This ordering is *why* the data contracts are shaped the way they are: the engine is chosen
-high in the stack (price formation), so the instrument only needs to carry enough to route
-and to feed its engine.
+**Conceptual hierarchy** from economics down to risk:
+
+```
+Economic Primitive  →  Venue Mechanics  →  Execution Engine
+      →  Contract Type  →  Valuation Model  →  Instrument
+            →  Strategy  →  Portfolio  →  Risk  →  AI Agent
+```
 
 ---
 
-## 4. The five contracts
+## 4. Asset taxonomy
 
-The system's public surface is five contracts. The **input** contracts (1–4) are what a
-caller must satisfy; the **output** contract (5) is what the suite returns. Field-level
-detail is in dedicated specs (TBD); this is the shape.
+The suite covers eleven asset classes in the MVP. Each is defined in full in its own spec —
+covering: what the asset is, what a backtest of it requires, the full data contract, which
+engine handles it, and the implications for system design.
 
-### 4.1 Instrument Contract
-Identity + classification + capabilities. The `price_formation` field selects the engine;
-capability flags gate which data and which order types are valid.
+| # | Asset class | Sub-types | Engine | Spec |
+|---|---|---|---|---|
+| 1 | **Equities** | Stocks, REITs, ADRs, tokenized stocks | A | [assets/equities.md](assets/equities.md) |
+| 2 | **ETFs & Funds** | ETFs, ETNs, inverse/leveraged, mutual funds | A + C | [assets/etfs.md](assets/etfs.md) |
+| 3 | **Crypto Spot (CEX)** | BTC, ETH, altcoins on centralized exchanges | A | [assets/crypto-spot-cex.md](assets/crypto-spot-cex.md) |
+| 4 | **DEX / AMM** | Uniswap v2/v3, Raydium, Curve, stablecoin pools | B | [assets/dex-amm.md](assets/dex-amm.md) |
+| 5 | **Futures (expiring)** | Equity, commodity, energy, crypto, rate futures | A | [assets/futures.md](assets/futures.md) |
+| 6 | **Perpetuals** | Linear, inverse, BTC/ETH perps | A | [assets/perpetuals.md](assets/perpetuals.md) |
+| 7 | **Options** | Equity, ETF, index, crypto options; warrants | E | [assets/options.md](assets/options.md) |
+| 8 | **Bonds & Fixed Income** | Treasuries, corporate, municipal, MBS, CDs | D | [assets/bonds.md](assets/bonds.md) |
+| 9 | **FX** | Major, minor, exotic pairs | A | [assets/fx.md](assets/fx.md) |
+| 10 | **NFTs** | ERC-721, SPL NFTs, collections | G | [assets/nfts.md](assets/nfts.md) |
+| 11 | **Prediction Markets** | Binary events, Polymarket-style | H | [assets/prediction-markets.md](assets/prediction-markets.md) |
 
-```
-Instrument
-├── id              # canonical, e.g. "BTC-USD@coinbase.spot", "WETH/USDC@uniswap.v3"
-├── venue           # venue_id + VenueMechanics
-├── price_formation # CLOB | AMM | NAV | Dealer | Quote | OTC | Marketplace | Oracle  → ENGINE
-├── settlement      # cash | physical | onchain | none
-├── capabilities    # bitset: HasOrderBook, HasFunding, HasExpiry, HasGreeks,
-│                   #         HasPoolReserves, HasCoupon, HasNAV, IsLeveraged, IsUnique, …
-├── quote           # base/quote ccy, tick size, lot size, contract multiplier
-└── metadata_ref    # → asset-specific static metadata (strike/expiry, coupon schedule, …)
-```
-
-### 4.2 Market Data Contract
-A universal envelope with a tagged-union payload. ~80% of events are the universal four
-(`Mark`, `Bar`, `Trade`, `Quote`/`Book`); the rest are capability-gated specializations.
-
-```
-MarketEvent {
-  instrument_id, venue_id,
-  ts_event,   # ns UTC — canonical clock
-  ts_recv,    # for latency/realism modeling
-  seq,        # per-instrument ordering / gap detection
-  payload: Payload
-}
-
-Payload =
-  | Mark   { price }                                   # single point (sparse assets)
-  | Bar    { open, high, low, close, volume, interval } # all five guaranteed present
-  | Trade  { price, size, aggressor_side, trade_id }
-  | Quote  { bid, bid_size, ask, ask_size }            # BBO
-  | BookDelta | BookSnapshot                           # L2/L3
-  | Funding { rate, mark_price, next_funding_ts }      # perps
-  | OpenInterest { oi }
-  | PoolState { reserves[], fee_bps, liquidity, sqrt_price, tick }  # AMM
-  | Nav { nav, premium_discount }                      # funds
-  | Coupon { rate, accrual, next_payment_ts }          # bonds
-  | Greeks { iv, delta, gamma, vega, theta, rho }      # options (provide-or-derive)
-  | Resolution { outcome, oracle_id }                  # event markets
-  | NftEvent { listing | sale | bid, floor, token_id }
-```
-
-**Required-data manifest.** For each `(instrument, engine)` the suite declares the minimum
-payloads it needs to produce honest fills, plus optional enrichments. A run that under-feeds
-is rejected with a precise error. Per-asset manifests: detailed spec TBD (this answers the
-original "what do the data contracts look like per asset" question at field level).
-
-### 4.3 Strategy Contract
-One universal interface. Asset-specific power is reached through capability-gated accessors,
-so strategies are portable by default and only diverge where they opt in.
-
-```
-trait Strategy {
-  fn on_event(&mut self, view: &MarketView, ctx: &mut Context);
-}
-```
-- `MarketView` always exposes universal fields (price, bid/ask, indicators, **and other
-  instruments' values** — enabling cross-asset thresholds).
-- `view.funding()` / `view.greeks()` return `Option` — `Some` only when the instrument has
-  the capability.
-- `ctx.submit(order)` is capability-checked (you cannot send a limit order to an AMM
-  instrument; the engine rejects at contract level).
-
-Strategies authored in Python (primary) via the SDK; hot reusable pieces may move to Rust.
-
-### 4.4 Model Contract
-AI/ML models plug in as a pure inference dependency the suite *calls*:
-```
-trait Model { fn infer(&self, features: FeatureFrame) -> Prediction; }
-```
-The suite owns no weights and does no training. Adapters (ONNX, TorchScript/LibTorch via
-`tch`, or a remote endpoint) live behind this trait. Determinism and look-ahead safety
-(features may only use data at-or-before `ts_event`) are contract requirements. Detailed
-spec TBD.
-
-### 4.5 Result / Metrics Contract
-What a run returns. A universal metrics core plus per-asset extensions.
-- **Universal:** total/period returns, volatility, Sharpe/Sortino, max drawdown, exposure,
-  turnover, hit rate, fees paid, fill quality (slippage vs. arrival).
-- **Per-asset extensions:** funding P&L (perps), slippage/price-impact and gas (AMM), greeks
-  attribution / theta decay (options), yield/duration/convexity P&L (bonds), tracking error
-  (funds), floor/illiquidity metrics (NFTs), Brier score (event markets).
-
-Metrics selection follows capabilities: the suite reports the universal set always and adds
-extensions for the capabilities present. Detailed spec TBD.
+Assets taxonomy overview: [assets/README.md](assets/README.md)
 
 ---
 
-## 5. Engines
+## 5. The five contracts
 
-Engines are selected by `price_formation`. Build the rule: **if price formation changes,
-build a new engine; if it stays the same, extend the existing one.**
+The system's public interface. Detailed field-level specifications live in `spec/contracts/`.
 
-| Engine | Name | Price formation | Covers |
-|---|---|---|---|
-| **A** | Order Book | CLOB | stocks, ETFs (exec), CEX spot crypto, futures, perpetuals, listed-option execution |
-| **B** | AMM | Liquidity pool | DEX tokens, memecoins, stablecoin pools |
-| **C** | NAV | End-of-day NAV | mutual funds, some index funds, ETF valuation leg |
-| **D** | Cash Flow | Dealer / accrual | bonds, treasuries, CDs |
-| **E** | Derivatives | Model valuation | options, warrants, futures/perp valuation, greeks |
-| **F** | Synthetic | OTC / payoff | CFDs, swaps, structured & barrier notes |
-| **G** | Marketplace | Auction / floor | NFTs, collectibles |
-| **H** | Event Resolution | Oracle / probability | prediction & binary markets |
-
-**Composition:** an instrument may use more than one engine via capabilities (ETF = A for
-execution + C for valuation). Engines are not a flat menu; they compose.
-
-**MVP scope — OPEN DECISION.** Recommended posture: *design all 8 interfaces now so nothing
-is architecturally blocked, build the highest-volume engines deep first* (A, then B and E).
-Final scope to be recorded in `docs/plans/` and an ADR. See open questions §10.
-
----
-
-## 6. Asset taxonomy → engine routing
-
-| Asset class | Engine(s) | Key extra capabilities / data |
+| Contract | Role | Spec |
 |---|---|---|
-| Order-book spot (stocks, CEX crypto, REITs, ADRs) | A | HasOrderBook; corporate actions, borrow rate |
-| DEX / AMM | B | HasPoolReserves; `PoolState`, fee tier, slippage, gas |
-| Funds / ETFs | A + C | HasNAV; `Nav`, holdings, tracking error |
-| Debt / bonds | D | HasCoupon; `Coupon`, yield curve, duration, credit |
-| FX | A′ (quote-driven) | rate differential, session liquidity |
-| Futures (expiring) | A | HasExpiry; `OpenInterest`, expiry, term structure |
-| Perpetuals | A | HasFunding, IsLeveraged; `Funding`, mark price, liquidations |
-| Options | E | HasGreeks, HasExpiry; IV surface, strike, exercise |
-| Synthetic / structured | F | payoff formula, financing, barriers |
-| Marketplace (NFT) | G | IsUnique; `NftEvent`, floor, rarity |
-| Event / prediction | H | HasResolution; `Resolution`, oracle, rules |
+| **Instrument** | Identity, venue, `price_formation` (engine selector), capabilities, metadata | [contracts/instrument.md](contracts/instrument.md) |
+| **Market Data** | Universal envelope + typed payload variants | [contracts/market-data.md](contracts/market-data.md) |
+| **Strategy** | Universal `on_event` interface; capability-gated accessors | [contracts/strategy.md](contracts/strategy.md) |
+| **Model** | AI/ML inference interface; look-ahead safety | [contracts/model.md](contracts/model.md) |
+| **Result / Metrics** | Universal metrics + per-capability extensions | [contracts/metrics.md](contracts/metrics.md) |
+
+Contracts overview: [contracts/README.md](contracts/README.md)
+
+The **Instrument Contract** is the router. Its `price_formation` field is the single
+decision point for engine selection. Capability flags determine which payload variants are
+valid and which order types are permitted. This is how the system avoids type-switches
+scattered through engine logic. See [ADR-0003](../adr/0003-capability-based-instrument-model.md).
 
 ---
 
-## 7. Execution model & the run queue
+## 6. Execution engines
 
-- **Event-driven core.** A deterministic clock replays `MarketEvent`s in `ts_event` order;
-  engines mutate state and produce fills; strategies react via `on_event`.
-- **Look-ahead safety.** Strategies and models may only observe data at-or-before the
-  current `ts_event`. Enforced by the contract, not by convention.
-- **Vectorized pre-compute, event-driven execution.** Indicators and model features may be
-  computed in bulk up front (fast), then replayed event-by-event for realistic fills — the
-  pattern that gives both speed and fidelity.
-- **Run queue.** Submitting and scheduling *many* backtests (parameter sweeps, multi-asset)
-  is a first-class concern of the suite (`crates/runner`), exploiting Rust's GIL-free
-  parallelism. The *trading platform* may have its own higher-level job orchestration, but
-  the primitive — "run N backtests efficiently" — lives here. (Open question §10 settles the
-  exact boundary.)
+Eight engines, each owning one distinct price-formation mechanic. Selection rule:
+**if price formation changes, build a new engine; if it stays the same, extend the existing one.**
+Engines compose via capability flags (e.g. ETF = Engine A execution + Engine C valuation).
 
----
+| Engine | Name | `price_formation` value | Spec |
+|---|---|---|---|
+| **A** | Order Book | `CLOB` | [engines/engine-a-order-book.md](engines/engine-a-order-book.md) |
+| **B** | AMM | `AMM` | [engines/engine-b-amm.md](engines/engine-b-amm.md) |
+| **C** | NAV | `NAV` | [engines/engine-c-nav.md](engines/engine-c-nav.md) |
+| **D** | Cash Flow | `DEALER` | [engines/engine-d-cashflow.md](engines/engine-d-cashflow.md) |
+| **E** | Derivatives | `CHAIN` | [engines/engine-e-derivatives.md](engines/engine-e-derivatives.md) |
+| **F** | Synthetic | `OTC` | [engines/engine-f-synthetic.md](engines/engine-f-synthetic.md) |
+| **G** | Marketplace | `MARKETPLACE` | [engines/engine-g-marketplace.md](engines/engine-g-marketplace.md) |
+| **H** | Event Resolution | `ORACLE` | [engines/engine-h-event-resolution.md](engines/engine-h-event-resolution.md) |
 
-## 8. Performance approach
-
-- Rust core for the per-event hot loop; Python only at the authoring/orchestration edges.
-- Apache Arrow columnar data crosses the Rust↔Python boundary zero-copy.
-- Parallel run execution via work-stealing (e.g. `rayon`); engines are `Send`/`Sync`.
-- Benchmarks tracked in `benches/`; start-to-finish latency is a tracked product metric.
-
-See research: [runtime selection](../research/conclusions/0001-runtime-selection.md).
+Engines overview and selection rules: [engines/README.md](engines/README.md)
 
 ---
 
-## 9. Integration boundary (who owns what)
+## 7. Run queue and execution model
+
+- **Event-driven core.** Deterministic clock replays `MarketEvent`s in `ts_event` order.
+- **Look-ahead safety.** A strategy or model may only observe data with `ts_event ≤ current_ts`.
+  Enforced by the contract.
+- **Vectorized pre-compute + event-driven execution.** Indicators and model features may be
+  bulk-computed over the full dataset before replay; the engine then drives fills event-by-event.
+  This gives both speed and fill realism.
+- **Run queue.** Submitting N backtests (parameter sweeps, multi-asset portfolios) is a
+  first-class concern of the suite. Parallelism is GIL-free Rust. The trading platform may
+  add higher-level orchestration above it, but the primitive lives here.
+
+Full spec: [runner.md](runner.md) *(TBD)*
+
+---
+
+## 8. Integration boundary
 
 | Concern | Owner |
 |---|---|
-| Market data (historical feeds) | **Caller / trading platform** |
+| Historical market data | **Caller** |
 | AI model weights & training | **Caller** |
-| Job orchestration / UI / live trading | **Caller** |
+| Strategy authoring | **Caller** (using our Strategy Contract) |
+| Job orchestration, UI, live trading | **Caller** |
 | Instrument & market-data contracts | **Suite** |
-| Engines, valuation, fills, metrics | **Suite** |
+| Engines, fills, valuation | **Suite** |
 | Strategy & model *interfaces* | **Suite** |
-| Run queue primitive | **Suite** (platform may wrap it) |
-
-The suite validates everything the caller provides against the contracts and fails loudly
-on under-specification.
+| Run queue primitive | **Suite** |
+| Data manifest validation and error reporting | **Suite** |
 
 ---
 
-## 10. Open questions / decisions pending
+## 9. Performance approach
 
-1. **MVP engine scope** — design-all-build-core (recommended) vs. all-8 vs. A+E only.
-2. **Run-queue boundary** — how much orchestration lives in the suite vs. the platform.
-3. **Dependency line** — confirm Arrow in Tier A (ADR-0002), or make even Arrow earn its
-   place with a bespoke columnar layout.
-4. **Derivatives math** — build in Rust vs. optional QuantLib plugin behind our trait.
-5. **Strategy authoring form** — Python callbacks vs. a compiled strategy graph/DSL (affects
-   both AI-model authoring and hot-loop speed).
-
----
-
-## 11. Related documents
-
-- Decisions: [`docs/adr/`](../adr/) — start with
-  [ADR-0001 (runtime)](../adr/0001-runtime-rust-python-hybrid.md),
-  [ADR-0002 (dependencies)](../adr/0002-minimal-external-dependencies.md),
-  [ADR-0003 (capability model)](../adr/0003-capability-based-instrument-model.md).
-- Research: [`docs/research/`](../research/).
-- Plans: [`docs/plans/`](../plans/).
+- Rust core for the per-event hot loop; Python only at authoring and orchestration edges.
+  See [ADR-0001](../adr/0001-runtime-rust-python-hybrid.md).
+- Apache Arrow crosses the Rust↔Python boundary zero-copy.
+- Parallel backtest queue via work-stealing; engines are `Send + Sync`.
+- Benchmarks tracked in `benches/`; start-to-finish latency and hot-loop throughput are
+  tracked product metrics, not aspirations.
 
 ---
 
-## 12. Glossary
+## 10. Open decisions
 
-- **CLOB** — Central Limit Order Book.
-- **AMM** — Automated Market Maker (liquidity-pool pricing).
-- **NAV** — Net Asset Value.
-- **Capability** — a flag on an instrument enabling specific data/order types.
-- **Price formation** — how an instrument's price is determined; selects the engine.
-- **Data manifest** — the declared minimum + optional data for an (instrument, engine).
-- **Provide-or-derive** — a value the caller may supply or the engine may compute if absent.
-- **Look-ahead** — illegally using data dated after the current event time.
+| # | Decision | Where it blocks |
+|---|---|---|
+| OD-1 | MVP engine scope: design-all-build-core vs. all-8 vs. A+E only | `plans/0001-mvp-roadmap.md` |
+| OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `spec/runner.md` |
+| OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | `ADR-0002` |
+| OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | `spec/engines/engine-e-derivatives.md` |
+| OD-5 | Strategy-authoring form: Python callbacks vs. compiled strategy graph/DSL | `spec/contracts/strategy.md` |
+
+---
+
+## 11. Glossary
+
+| Term | Definition |
+|---|---|
+| **CLOB** | Central Limit Order Book — price formation via resting bids and offers |
+| **AMM** | Automated Market Maker — price formation via an algorithmic invariant (e.g. x·y=k) |
+| **NAV** | Net Asset Value — fund price determined by the value of underlying holdings |
+| **Capability** | A flag on an Instrument enabling specific payload types, order types, and engine features |
+| **Price formation** | How an instrument's price is determined; the single field that selects the engine |
+| **Data manifest** | The declared minimum (and optional) data for a given `(instrument, engine)` pairing |
+| **Provide-or-derive** | A value the caller may supply, or the engine computes if absent |
+| **Look-ahead** | The bug of a strategy observing data dated after the current event time |
+| **Mark price** | A manipulation-resistant reference price used for liquidation calculation (perps, derivatives) |
+| **Continuous contract** | A synthetic time-series constructed from rolling expiring futures contracts |
+| **IV surface** | A 2D grid of implied volatility by strike and expiry at a given point in time |
+| **Brier score** | Calibration metric for probabilistic forecasts; primary metric for prediction-market strategies |
+| **Clean price** | Bond quoted price excluding accrued coupon interest |
+| **Dirty price** | Bond actual purchase price = clean price + accrued interest |
+| **Roll yield** | Gain or loss from rolling an expiring futures contract; positive in backwardation, negative in contango |
+| **Floor price** | The lowest listed ask price in an NFT collection |
+| **Engine** | A self-contained price-formation simulation module selected by `price_formation` |
