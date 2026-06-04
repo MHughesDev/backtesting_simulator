@@ -1,0 +1,28 @@
+# ── Rust ───────────────────────────────────────────────
+/target
+**/target
+**/*.rs.bk
+# Cargo.lock IS tracked (workspace ships binaries) — do not ignore it.
+
+# ── Python ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── maturin / native extension artifacts ───────────────
+*.so
+*.pyd
+*.dylib
+
+# ── editors / OS ───────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
