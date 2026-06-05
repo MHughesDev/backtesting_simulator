@@ -219,7 +219,8 @@ simulates, so a strategy behaves identically in backtest and live.
 | Historical market data | **Caller** |
 | AI model weights & training **algorithms** (the `Trainer` impl, injected) | **Caller** |
 | *When* to retrain + assembling point-in-time training data + pause-train-resume | **Suite** |
-| Live async training orchestration + hot-swap | **Caller** |
+| Any non-backtest (e.g. live) training orchestration | **Caller** (out of scope here) |
+| Training method *implementation* (named by id in the strategy, resolved by the injected `Trainer`) | **Caller** |
 | Strategy storage, versioning, user selection | **Caller** |
 | Live trading / order execution (parity with suite) | **Caller** |
 | Job orchestration, UI | **Caller** |

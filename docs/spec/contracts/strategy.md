@@ -224,7 +224,11 @@ data.
 
 Off by default. When present and `enabled`, the suite orchestrates *when* to (re)fit and *with
 what point-in-time data*, but the **training method itself is a registered, preconfigured
-routine owned by the caller** — the suite does not own training algorithms.
+routine owned by the caller** — the suite does not own training algorithms. The `method` field
+is an **identifier** the injected `Trainer` resolves (the *what*, not the *how*); it lives in
+the strategy because it is part of the strategy's reproducible definition. Full mechanics —
+the `Trainer` port, pause-train-resume, visibility, and retention — are in
+[training.md](training.md). See [ADR-0008](../adr/0008-training-scope-method-visibility-retention.md).
 
 ```jsonc
 "training": {
@@ -237,9 +241,15 @@ routine owned by the caller** — the suite does not own training algorithms.
 }
 ```
 
-**Invariants:** training data is strictly point-in-time (`ts_event ≤ current_ts`) — this is
-how walk-forward avoids look-ahead. Training is deterministic (seeded). Refit points are
-cached by `(method, data_window, params)` so a parameter sweep does not retrain redundantly.
+**Invariants** (full detail in [training.md](training.md)):
+- Training data is strictly point-in-time (`ts_event ≤ current_ts`) — how walk-forward avoids
+  look-ahead.
+- Training is deterministic (seeded); refit points are cached by
+  `(base_version, method, data_window, params, seed)` so a sweep does not retrain redundantly.
+- **Visibility:** training sees only the strategy's **bound features** — the same surface the
+  model sees at inference, never arbitrary universe data.
+- **Retention:** a run keeps exactly two artifacts — the **initial** (as passed in) and the
+  **current** (latest trained); intermediates are discarded on supersession.
 
 ---
 

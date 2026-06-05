@@ -1,6 +1,6 @@
 # ADR-0007: Training is a shared pipeline invoked through a port
 
-- **Status:** Proposed (repo topology to confirm — see Consequences)
+- **Status:** Proposed — refined by [ADR-0008](0008-training-scope-method-visibility-retention.md) (repo topology still to confirm; live-orchestration framing narrowed to context-only per ADR-0008 §4)
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
 - **Informed by:** [spec/contracts/training.md](../spec/contracts/training.md),
