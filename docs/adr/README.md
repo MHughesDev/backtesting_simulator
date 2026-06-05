@@ -42,3 +42,5 @@ Proposed → Accepted → (later) Superseded by ADR-XXXX
 | [0008](0008-training-scope-method-visibility-retention.md) | Training — method selection, visibility, retention, scope | Accepted |
 | [0009](0009-end-state-system-no-mvp.md) | Define the end-state system; no MVP scope | Accepted |
 | [0010](0010-suite-does-not-own-portfolio.md) | Suite does not own a portfolio — per-trade model + injected `Account` | Accepted |
+| [0011](0011-component-registry-trust-model.md) | Component registry trust model — tiered, WASM sandbox for untrusted | Accepted |
+| [0012](0012-standalone-contracts-kernel.md) | Contracts are a standalone, dependency-free shared kernel | Accepted |

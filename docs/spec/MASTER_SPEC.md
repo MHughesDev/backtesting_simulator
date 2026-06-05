@@ -126,7 +126,8 @@ Economic Primitive  →  Venue Mechanics  →  Execution Engine
 
 ## 4. Asset taxonomy
 
-The suite covers eleven asset classes in the MVP. Each is defined in full in its own spec —
+The suite covers eleven asset classes (the full end-state set — there is no MVP subset, see
+[ADR-0009](../adr/0009-end-state-system-no-mvp.md)). Each is defined in full in its own spec —
 covering: what the asset is, what a backtest of it requires, the full data contract, which
 engine handles it, and the implications for system design.
 
@@ -148,19 +149,26 @@ Assets taxonomy overview: [assets/README.md](assets/README.md)
 
 ---
 
-## 5. The five contracts
+## 5. The contracts
 
-The system's public interface. Detailed field-level specifications live in `spec/contracts/`.
+The system's public interface. The caller satisfies the input contracts; the suite supplies
+outputs. Detailed specifications live in `spec/contracts/` and the two top-level specs
+[run-request.md](run-request.md) and [component-registry.md](component-registry.md).
 
 | Contract | Role | Spec |
 |---|---|---|
 | **Instrument** | Identity, venue, `price_formation` (engine selector), capabilities, metadata | [contracts/instrument.md](contracts/instrument.md) |
-| **Market Data** | Universal envelope + typed payload variants | [contracts/market-data.md](contracts/market-data.md) |
-| **Strategy** | Universal `on_event` interface; capability-gated accessors | [contracts/strategy.md](contracts/strategy.md) |
-| **Model** | AI/ML inference interface; look-ahead safety | [contracts/model.md](contracts/model.md) |
-| **Result / Metrics** | Universal metrics + per-capability extensions | [contracts/metrics.md](contracts/metrics.md) |
+| **Market Data** | Universal envelope + typed, capability-gated payload variants | [contracts/market-data.md](contracts/market-data.md) |
+| **Strategy** | Single JSON declarative pipeline (universe→features→models→alpha→sizing→risk→execution) | [contracts/strategy.md](contracts/strategy.md) |
+| **Model** (port) | AI/ML inference interface; look-ahead safety; injected | [contracts/model.md](contracts/model.md) |
+| **Training** (`Trainer` port) | Opt-in PIT (re)training; pause-train-resume; injected | [contracts/training.md](contracts/training.md) |
+| **Account** (port) | Caller-owned ledger the suite queries; **no assumed portfolio** | [run-request.md](run-request.md) §5 |
+| **Run Request** | Per-invocation binding of data, time, parameters, ports, output | [run-request.md](run-request.md) |
+| **Component Registry** | Built-in / native / WASM components strategies wire together | [component-registry.md](component-registry.md) |
+| **Result / Metrics** | Per-trade `TradeRecord` stream; aggregate metrics downstream | [contracts/metrics.md](contracts/metrics.md) *(deferred)* |
 
-Contracts overview: [contracts/README.md](contracts/README.md)
+Contracts overview: [contracts/README.md](contracts/README.md). Full spec index & readiness:
+[spec/README.md](README.md).
 
 The **Instrument Contract** is the router. Its `price_formation` field is the single
 decision point for engine selection. Capability flags determine which payload variants are
@@ -261,11 +269,10 @@ exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 | OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | `spec/engines/engine-e-derivatives.md` |
 | ~~OD-5~~ | ~~Strategy-authoring form~~ → **Resolved:** single JSON declarative pipeline + component registry; no `on_event` blob | [ADR-0004](../adr/0004-strategy-json-pipeline.md) |
 | OD-6 | Multi-strategy portfolios: one run = one strategy, or shared capital pool with portfolio-level netting/risk | `spec/contracts/strategy.md` §15 |
-| OD-7 | Component registry trust model: Rust / PyO3 / WASM, and sandboxing for determinism | `spec/contracts/strategy.md` §15 |
-| OD-8 | Run Request schema: data bindings, dates, capital, seeds, parameter sweeps (separate from Strategy JSON) | `spec/run-request.md` (TBD) |
-| OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | `spec/contracts/strategy.md` §15 |
+| ~~OD-7~~ | ~~Component registry trust model~~ → **Resolved:** tiered (built-in / native / WASM sandbox for untrusted) | [ADR-0011](../adr/0011-component-registry-trust-model.md) |
+| OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | `spec/component-registry.md` §9 |
 | OD-10 | Model registry & reproducibility: stable `model_id@version` resolution over time | `spec/contracts/model.md` §8 |
-| OD-11 | Training repo topology: extract standalone `*-contracts` package vs. depend on this repo's `crates/contracts` | [ADR-0007](../adr/0007-shared-training-pipeline-port.md) |
+| ~~OD-11~~ | ~~Shared-contracts repo topology~~ → **Resolved:** standalone dependency-free kernel; build now, extract later | [ADR-0012](../adr/0012-standalone-contracts-kernel.md) |
 | OD-12 | Validation gating of freshly trained artifacts (reject-and-keep-incumbent policy) | `spec/contracts/training.md` §8 |
 
 ---
@@ -300,6 +307,10 @@ exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 | **TradeRecord** | The suite's per-decision output: trade setup + sizing decision + execution information |
 | **Account (port)** | Injected, caller-owned ledger the suite queries for equity/positions/collateral and reports fills to |
 | **Run Request** | The per-invocation document binding a strategy to data, time, parameters, injected ports, and output config |
+| **Component** | A named, reusable building block (indicator, sizer, selector, …) that fills one pipeline slot; strategies wire components, they don't contain logic |
+| **Component registry** | The set of available components, in tiers: built-in (Rust), trusted native, and sandboxed WASM |
+| **WASM sandbox** | A sealed WebAssembly runtime that runs untrusted/AI components with no I/O, clock, or network — enforcing purity and look-ahead safety by construction |
+| **Shared kernel (contracts)** | The standalone, dependency-free package of cross-boundary types/ports that the suite, training package, and live platform all depend on |
 | **Clean price** | Bond quoted price excluding accrued coupon interest |
 | **Dirty price** | Bond actual purchase price = clean price + accrued interest |
 | **Roll yield** | Gain or loss from rolling an expiring futures contract; positive in backwardation, negative in contango |

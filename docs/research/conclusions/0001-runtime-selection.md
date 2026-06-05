@@ -1,7 +1,7 @@
 # Conclusion — Runtime selection
 
 Topic 0001. **Decision: Rust + Python hybrid.**
-Feeds: [ADR-0001](../adr/0001-runtime-rust-python-hybrid.md). Date: 2026-06-04.
+Feeds: [ADR-0001](../../adr/0001-runtime-rust-python-hybrid.md). Date: 2026-06-04.
 
 ## Decision
 

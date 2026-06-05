@@ -8,7 +8,7 @@ caller (the trading platform).
 This contract makes "the strategy JSON can call an AI function by passing a model ID and the
 data needed each inference" precise.
 
-See [ADR-0006](../adr/0006-model-inference-and-training.md).
+See [ADR-0006](../../adr/0006-model-inference-and-training.md).
 
 ---
 

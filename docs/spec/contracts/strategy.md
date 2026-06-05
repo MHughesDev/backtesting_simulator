@@ -7,8 +7,8 @@ JSON.** There is no second authoring format, no embedded code, and no monolithic
 The suite **never stores strategies.** A strategy JSON is passed in at runtime, validated,
 compiled into an internal execution plan, executed, and discarded. Storage, versioning,
 user ownership, and selection all live in the trading platform. See
-[ADR-0005](../adr/0005-strategy-not-stored-suite-is-a-library.md) and
-[ADR-0004](../adr/0004-strategy-json-pipeline.md).
+[ADR-0005](../../adr/0005-strategy-not-stored-suite-is-a-library.md) and
+[ADR-0004](../../adr/0004-strategy-json-pipeline.md).
 
 ---
 
@@ -24,7 +24,9 @@ is rejected.** Here is the final rule:
 - **Extensibility is via the component registry, not via free-form code.** When a built-in
   component is insufficient, you register a *named, reusable, typed component* (an indicator,
   an alpha function, a sizing function, etc.) and reference it by ID from the JSON. The
-  registry holds the code; the JSON holds the wiring.
+  registry holds the code; the JSON holds the wiring. **What a "component" is, and the trust
+  tiers (built-in / native / WASM sandbox) for running custom ones, are fully defined in
+  [component-registry.md](../component-registry.md).**
 
 This gives the user's stated goal exactly: a clean pipeline that hands each stage what it
 needs, and an escape hatch that is **controlled and reusable** (a registered component) rather
@@ -170,7 +172,7 @@ registry `ref`. Outputs are named for downstream binding. These are designed to 
 Models are **pre-trained and external by default**. The strategy *calls* a model by ID,
 passes it the data it needs each time inference runs, and binds the outputs. The suite never
 stores weights and never trains unless a strategy explicitly opts in (§8.2). See
-[model.md](model.md) and [ADR-0006](../adr/0006-model-inference-and-training.md).
+[model.md](model.md) and [ADR-0006](../../adr/0006-model-inference-and-training.md).
 
 ### 8.1 Inference node
 
@@ -228,7 +230,7 @@ routine owned by the caller** — the suite does not own training algorithms. Th
 is an **identifier** the injected `Trainer` resolves (the *what*, not the *how*); it lives in
 the strategy because it is part of the strategy's reproducible definition. Full mechanics —
 the `Trainer` port, pause-train-resume, visibility, and retention — are in
-[training.md](training.md). See [ADR-0008](../adr/0008-training-scope-method-visibility-retention.md).
+[training.md](training.md). See [ADR-0008](../../adr/0008-training-scope-method-visibility-retention.md).
 
 ```jsonc
 "training": {

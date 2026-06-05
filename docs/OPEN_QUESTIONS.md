@@ -181,7 +181,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## Q. Component registry & extensibility
 
-- **Q-REG-1** Trust model: are custom components Rust (compiled), Python (PyO3), or WASM (sandboxed)? *(OD-7 — blocking)*
+- **Q-REG-1** ~~Trust model: Rust / PyO3 / WASM?~~ **RESOLVED:** tiered — built-in Rust / trusted native / **WASM sandbox** for untrusted/AI; Python excluded from the hot loop ([ADR-0011](adr/0011-component-registry-trust-model.md), [component-registry.md](spec/component-registry.md)).
 - **Q-REG-2** How are components versioned and pinned for reproducibility?
 - **Q-REG-3** How are components sandboxed to preserve determinism (no I/O, no wall-clock, no unseeded RNG)?
 - **Q-REG-4** Are built-in indicators specified by **canonical formula** (to avoid library drift), and where?
@@ -215,7 +215,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## V. Repo topology
 
-- **Q-REPO-1** Is a standalone `*-contracts` package extracted (shared by suite, training package, platform), or do others depend on this repo's `crates/contracts`? *(OD-11 — blocking-ish)*
+- **Q-REPO-1** ~~Standalone `*-contracts` package or depend on this repo's `crates/contracts`?~~ **RESOLVED:** standalone, dependency-free shared kernel; built here now, extracted when a 2nd consumer exists; outside systems depend on `contracts`, never the engine ([ADR-0012](adr/0012-standalone-contracts-kernel.md)).
 - **Q-REPO-2** Mono-repo vs. multi-repo for the suite / training / platform contracts?
 
 ## W. Security & safety
@@ -255,8 +255,8 @@ noted. Nothing here is decided; these are prompts for discussion.
 | **Q-PROD-1** MVP engine scope | Determines build target | OD-1 | ✅ Resolved — end-state, no MVP (ADR-0009) |
 | **Q-RUNREQ-1** Run Request schema | "Pass a strategy in at runtime" was undefined | OD-8 | ✅ Resolved — `run-request.md` |
 | **Q-ACCT-1** Portfolio/ledger ownership | Decides if the suite is stateful per run | — | ✅ Resolved — injected `Account` (ADR-0010) |
-| **Q-REG-1** Component registry trust model | Gates how strategies are extended (Rust/PyO3/WASM) | OD-7 | ⏳ Open — under discussion |
-| **Q-REPO-1** Shared contracts topology | Shapes how training package & platform consume contracts | OD-11 | ⏳ Open — under discussion |
+| **Q-REG-1** Component registry trust model | Gates how strategies are extended | OD-7 | ✅ Resolved — tiered + WASM (ADR-0011) |
+| **Q-REPO-1** Shared contracts topology | Shapes how training package & platform consume contracts | OD-11 | ✅ Resolved — standalone kernel (ADR-0012) |
 | **Q-PROD-2** First vertical slice | Sequenced into the forthcoming phased plan | — | ⏳ Deferred to planning |
 
 Everything else can be deferred until a strategy or engine actually needs it.

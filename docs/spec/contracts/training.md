@@ -5,9 +5,9 @@ fine-tuning, online adaptation. This spec defines how the backtest suite drives 
 *without* owning any ML.
 
 Companion to [model.md](model.md) (inference). See
-[ADR-0006](../adr/0006-model-inference-and-training.md) (opt-in training),
-[ADR-0007](../adr/0007-shared-training-pipeline-port.md) (training via an injected port), and
-[ADR-0008](../adr/0008-training-scope-method-visibility-retention.md) (scope, method selection,
+[ADR-0006](../../adr/0006-model-inference-and-training.md) (opt-in training),
+[ADR-0007](../../adr/0007-shared-training-pipeline-port.md) (training via an injected port), and
+[ADR-0008](../../adr/0008-training-scope-method-visibility-retention.md) (scope, method selection,
 visibility, retention).
 
 ---
@@ -23,7 +23,7 @@ This repo defines **only two things** about training:
 This repo does **not** define the trading platform, the training system's internals, the model
 registry, or any **non-backtest (e.g. live) orchestration**. Those belong to the caller. Where
 this document mentions live behavior, it is **interplay context only** — included so the
-boundary is unambiguous, not a specification of the platform. (See [ADR-0008](../adr/0008-training-scope-method-visibility-retention.md).)
+boundary is unambiguous, not a specification of the platform. (See [ADR-0008](../../adr/0008-training-scope-method-visibility-retention.md).)
 
 ---
 
@@ -222,4 +222,4 @@ exists only to make the boundary explicit:
 - **Cross-run refit cache:** per-run only, or persisted across runs? Persistence implies the
   suite touching storage (tension with ADR-0005); could be a caller-injected cache interface.
 - **Repo topology (OD-11):** standalone `*-contracts` package vs. depending on this repo's
-  `crates/contracts` (see [ADR-0007](../adr/0007-shared-training-pipeline-port.md)).
+  `crates/contracts` (see [ADR-0007](../../adr/0007-shared-training-pipeline-port.md)).
