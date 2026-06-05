@@ -104,6 +104,7 @@ implementation begins.
 | Research | [`docs/research/`](docs/research/) | Sources, summaries, and conclusions behind decisions |
 | Decisions | [`docs/adr/`](docs/adr/) | Architecture Decision Records (the "why") |
 | Plans | [`docs/plans/`](docs/plans/) | Roadmaps and implementation plans |
+| Open questions | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | The full design backlog (blocking + exploratory) |
 
 ## License
 

@@ -246,6 +246,9 @@ simulates, so a strategy behaves identically in backtest and live.
 
 ## 10. Open decisions
 
+The table below is the **blocking** subset. The full design backlog — blocking and
+exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
+
 | # | Decision | Where it blocks |
 |---|---|---|
 | OD-1 | MVP engine scope: design-all-build-core vs. all-8 vs. A+E only | `plans/0001-mvp-roadmap.md` |
