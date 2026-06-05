@@ -202,7 +202,7 @@ Engines overview and selection rules: [engines/README.md](engines/README.md)
   first-class concern of the suite. Parallelism is GIL-free Rust. The trading platform may
   add higher-level orchestration above it, but the primitive lives here.
 
-Full spec: [runner.md](runner.md) *(TBD)*
+Full spec: [run-request.md](run-request.md) (the per-invocation document) and `runner.md` *(TBD)*
 
 ---
 
@@ -222,6 +222,8 @@ simulates, so a strategy behaves identically in backtest and live.
 | Any non-backtest (e.g. live) training orchestration | **Caller** (out of scope here) |
 | Training method *implementation* (named by id in the strategy, resolved by the injected `Trainer`) | **Caller** |
 | Strategy storage, versioning, user selection | **Caller** |
+| Portfolio / cash-position ledger / accounting (injected `Account` port) | **Caller** |
+| Portfolio-level metrics aggregation | **Caller / optional analytics layer** |
 | Live trading / order execution (parity with suite) | **Caller** |
 | Job orchestration, UI | **Caller** |
 | Strategy JSON format & validation | **Suite** |
@@ -251,8 +253,10 @@ exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 
 | # | Decision | Where it blocks |
 |---|---|---|
-| OD-1 | MVP engine scope: design-all-build-core vs. all-8 vs. A+E only | `plans/0001-mvp-roadmap.md` |
+| ~~OD-1~~ | ~~MVP engine scope~~ → **Resolved:** no MVP; specify & build the **end-state** system (all assets, all 8 engines) | [ADR-0009](../adr/0009-end-state-system-no-mvp.md) |
 | OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `spec/runner.md` |
+| ~~OD-8~~ | ~~Run Request schema~~ → **Resolved:** defined | [run-request.md](run-request.md) |
+| ~~Q-ACCT-1~~ | ~~Does the suite own the portfolio ledger?~~ → **Resolved:** no; per-trade model + injected `Account` | [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md) |
 | OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | `ADR-0002` |
 | OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | `spec/engines/engine-e-derivatives.md` |
 | ~~OD-5~~ | ~~Strategy-authoring form~~ → **Resolved:** single JSON declarative pipeline + component registry; no `on_event` blob | [ADR-0004](../adr/0004-strategy-json-pipeline.md) |
@@ -292,6 +296,10 @@ exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 | **Hot-swap** | Replacing the active model version with a newly trained one (atomic at sim time in backtest; async in live) |
 | **Pause-train-resume** | Backtest mechanic: freeze the sim clock at a refit point, train on PIT data, swap the model, resume |
 | **Parity** | The guarantee that a strategy behaves identically in backtest and live, differing only in data feed |
+| **Per-trade model** | The suite simulates each trade decision and emits a TradeRecord; it owns no portfolio |
+| **TradeRecord** | The suite's per-decision output: trade setup + sizing decision + execution information |
+| **Account (port)** | Injected, caller-owned ledger the suite queries for equity/positions/collateral and reports fills to |
+| **Run Request** | The per-invocation document binding a strategy to data, time, parameters, injected ports, and output config |
 | **Clean price** | Bond quoted price excluding accrued coupon interest |
 | **Dirty price** | Bond actual purchase price = clean price + accrued interest |
 | **Roll yield** | Gain or loss from rolling an expiring futures contract; positive in backwardation, negative in contango |

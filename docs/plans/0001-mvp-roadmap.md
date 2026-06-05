@@ -1,7 +1,12 @@
 # Plan 0001 — MVP roadmap
 
-**Status:** Draft. Sequencing is provisional; the MVP engine-scope decision is still open
-(MASTER_SPEC §5, §10).
+> **⚠️ SUPERSEDED.** There is no MVP. Per [ADR-0009](../adr/0009-end-state-system-no-mvp.md),
+> the system is specified and built to its **end state** (all assets, all 8 engines, full
+> surface). A forthcoming long-term plan will decompose the end-state into high-level phases,
+> with per-phase files of discrete atomic tasks — none of which reduce the product. This file
+> is retained only for history and will be replaced by that plan.
+
+**Status:** Superseded by the forthcoming end-state phased plan.
 
 This is a high-level phase plan, not a committed schedule. It exists to order the work and
 surface the decisions each phase needs.

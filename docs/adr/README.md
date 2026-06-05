@@ -40,3 +40,5 @@ Proposed → Accepted → (later) Superseded by ADR-XXXX
 | [0006](0006-model-inference-and-training.md) | AI models — inference by default, opt-in PIT training | Accepted |
 | [0007](0007-shared-training-pipeline-port.md) | Training is a shared pipeline invoked through a port | Proposed (refined by 0008) |
 | [0008](0008-training-scope-method-visibility-retention.md) | Training — method selection, visibility, retention, scope | Accepted |
+| [0009](0009-end-state-system-no-mvp.md) | Define the end-state system; no MVP scope | Accepted |
+| [0010](0010-suite-does-not-own-portfolio.md) | Suite does not own a portfolio — per-trade model + injected `Account` | Accepted |

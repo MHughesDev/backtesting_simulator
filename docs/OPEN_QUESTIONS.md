@@ -106,7 +106,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## H. Portfolio, accounting, currency
 
-- **Q-ACCT-1** Does the suite own the portfolio/cash ledger during a run, or is it injected? *(blocking — see highlights)*
+- **Q-ACCT-1** ~~Does the suite own the portfolio/cash ledger during a run, or is it injected?~~ **RESOLVED:** no — per-trade model + injected `Account` port ([ADR-0010](adr/0010-suite-does-not-own-portfolio.md)).
 - **Q-ACCT-2** Single base currency per run, or multi-currency with FX conversion — and where does the FX rate stream come from?
 - **Q-ACCT-3** How is **settlement timing** modeled (T+2 equities, T+0 crypto, coupon/dividend pay dates)?
 - **Q-ACCT-4** How is buying power / margin computed across **mixed asset classes** in one portfolio?
@@ -147,7 +147,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## L. Run request / invocation
 
-- **Q-RUNREQ-1** Full **Run Request** schema: data bindings, date range, warmup, capital, seed, parameter values/sweeps. *(OD-8 — blocking)*
+- **Q-RUNREQ-1** ~~Full **Run Request** schema~~ **RESOLVED:** defined in [run-request.md](spec/run-request.md) (OD-8).
 - **Q-RUNREQ-2** How are injected components (the `Trainer`, `Model`s, custom registry components) passed in?
 - **Q-RUNREQ-3** How are data sources bound — file paths, reader handles, in-memory Arrow tables?
 - **Q-RUNREQ-4** How are parameter **values** vs. a parameter **sweep** distinguished in one request?
@@ -241,7 +241,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## Z. Product & roadmap
 
-- **Q-PROD-1** MVP engine scope: design-all-build-core vs. all-8 vs. A+E only? *(OD-1 — blocking)*
+- **Q-PROD-1** ~~MVP engine scope~~ **RESOLVED:** no MVP — specify & build the **end-state** system ([ADR-0009](adr/0009-end-state-system-no-mvp.md)).
 - **Q-PROD-2** Which asset class is the first **end-to-end vertical slice** (data → engine → strategy → metrics)?
 - **Q-PROD-3** What is the first real strategy used to validate the system against a known result?
 - **Q-PROD-4** Who are the first users (you + the platform), and what do they need first?
@@ -250,13 +250,13 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## Highlights — the questions actually blocking progress
 
-| Question | Why it blocks | Tracked as |
-|---|---|---|
-| **Q-PROD-1** MVP engine scope | Determines what gets built first | OD-1 |
-| **Q-RUNREQ-1** Run Request schema | Without it, "pass a strategy in at runtime" is undefined | OD-8 |
-| **Q-ACCT-1** Portfolio/ledger ownership | Decides whether the suite is even stateful per run | — |
-| **Q-REG-1** Component registry trust model | Gates how strategies are extended (Rust/PyO3/WASM) | OD-7 |
-| **Q-REPO-1** Shared contracts topology | Shapes how training package & platform consume contracts | OD-11 |
-| **Q-PROD-2** First vertical slice | Focuses everything else | — |
+| Question | Why it blocks | Tracked as | Status |
+|---|---|---|---|
+| **Q-PROD-1** MVP engine scope | Determines build target | OD-1 | ✅ Resolved — end-state, no MVP (ADR-0009) |
+| **Q-RUNREQ-1** Run Request schema | "Pass a strategy in at runtime" was undefined | OD-8 | ✅ Resolved — `run-request.md` |
+| **Q-ACCT-1** Portfolio/ledger ownership | Decides if the suite is stateful per run | — | ✅ Resolved — injected `Account` (ADR-0010) |
+| **Q-REG-1** Component registry trust model | Gates how strategies are extended (Rust/PyO3/WASM) | OD-7 | ⏳ Open — under discussion |
+| **Q-REPO-1** Shared contracts topology | Shapes how training package & platform consume contracts | OD-11 | ⏳ Open — under discussion |
+| **Q-PROD-2** First vertical slice | Sequenced into the forthcoming phased plan | — | ⏳ Deferred to planning |
 
 Everything else can be deferred until a strategy or engine actually needs it.
