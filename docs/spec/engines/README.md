@@ -17,16 +17,19 @@ Examples:
 
 ## Engines
 
-| Engine | `price_formation` | Spec |
-|---|---|---|
-| **A** — Order Book | `CLOB` | [engine-a-order-book.md](engine-a-order-book.md) *(TBD)* |
-| **B** — AMM | `AMM` | [engine-b-amm.md](engine-b-amm.md) *(TBD)* |
-| **C** — NAV | `NAV` | [engine-c-nav.md](engine-c-nav.md) *(TBD)* |
-| **D** — Cash Flow | `DEALER` | [engine-d-cashflow.md](engine-d-cashflow.md) *(TBD)* |
-| **E** — Derivatives | `CHAIN` | [engine-e-derivatives.md](engine-e-derivatives.md) *(TBD)* |
-| **F** — Synthetic | `OTC` | [engine-f-synthetic.md](engine-f-synthetic.md) *(TBD)* |
-| **G** — Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) *(TBD)* |
-| **H** — Event Resolution | `ORACLE` | [engine-h-event-resolution.md](engine-h-event-resolution.md) *(TBD)* |
+| Engine | `price_formation` | Spec | Status |
+|---|---|---|---|
+| **A** — Order Book | `CLOB` | [engine-a-order-book.md](engine-a-order-book.md) | ✅ Defined |
+| **B** — AMM | `AMM` | [engine-b-amm.md](engine-b-amm.md) | ✅ Defined |
+| **C** — NAV | `NAV` | [engine-c-nav.md](engine-c-nav.md) | 🔲 Deferred |
+| **D** — Cash Flow | `DEALER` | [engine-d-cashflow.md](engine-d-cashflow.md) | 🔲 Deferred |
+| **E** — Derivatives | `CHAIN` | [engine-e-derivatives.md](engine-e-derivatives.md) | ✅ Defined |
+| **F** — Synthetic | `OTC` | [engine-f-synthetic.md](engine-f-synthetic.md) | 🔲 Deferred |
+| **G** — Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) | 🔲 Deferred |
+| **H** — Event Resolution | `ORACLE` | [engine-h-event-resolution.md](engine-h-event-resolution.md) | 🔲 Deferred |
+
+The three load-bearing engines (**A**, **B**, **E**) are fully specified; the remaining five are
+scoped stubs to be authored in their build phases.
 
 ## What every engine must implement
 

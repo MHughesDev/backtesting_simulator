@@ -38,7 +38,10 @@ readiness check**.
 | Spec | Status |
 |---|---|
 | [engines/README.md](engines/README.md) (selection rule, order-type matrix, composition) | ✅ Defined |
-| engine-a (Order Book) … engine-h (Event Resolution) — per-engine internals | 🔲 Deferred (per-phase) |
+| [engine-a (Order Book)](engines/engine-a-order-book.md) — full mechanics | ✅ Defined |
+| [engine-b (AMM)](engines/engine-b-amm.md) — full mechanics | ✅ Defined |
+| [engine-e (Derivatives)](engines/engine-e-derivatives.md) — full mechanics | ✅ Defined |
+| engine-c, -d, -f, -g, -h — per-engine internals | 🔲 Deferred (per-phase) |
 
 ### Runner
 | Spec | Status |
@@ -89,9 +92,12 @@ is made and recorded:
 - ✅ The Run Request (how a run is invoked) and the component registry + trust tiers.
 - ✅ Reproducibility/determinism and look-ahead invariants stated system-wide.
 
-**Remaining work is depth, not architecture** — per-engine internal algorithms, metrics
-formulas, signals, and the runner — all of which have a fixed architectural frame and become
-tasks inside their phases.
+The three **load-bearing engines (A Order Book, B AMM, E Derivatives) are now fully specified**
+— matching/fill models, pool math (v2/v3/Curve), and option pricing/greeks/exercise.
+
+**Remaining work is depth, not architecture** — the five other engine internals (C, D, F, G, H),
+metrics formulas, signals, and the runner — all of which have a fixed architectural frame and
+become tasks inside their phases.
 
 **Conclusion: ready to begin implementation planning.** Next: a long-term plan decomposing the
 end-state into high-level phases, then per-phase files of discrete, atomic tasks.
