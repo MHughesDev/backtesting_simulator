@@ -67,6 +67,12 @@ Unlike a futures expiry, the resolution **date is not fixed** — it occurs when
 (and after any oracle dispute window). The engine waits for the `Resolution` event to close
 positions; `resolution_deadline` bounds the horizon but actual timing is data-driven.
 
+**Liquidity near resolution:** prediction market order books become materially illiquid as the
+lock date approaches — volume drops, spreads widen, and the book becomes one-sided. The fill
+model's accuracy degrades for strategies holding positions through the final days before locking.
+This is an irreducible data-quality limitation, not an engine deficiency; results should surface
+the `days_held_before_lock` distribution so analysts can assess exposure to this window.
+
 ---
 
 ## 6. Oracle risk
@@ -104,9 +110,15 @@ auxiliary record tagged `resolution` with the outcome and entry-probability for 
 
 ---
 
-## 10. Open items / parameters
+## 10. Extensions / open items
 
-- Whether to promote resting **limit** orders on the YES/NO book to first-class (matrix change)
-  to match real CLOB venues.
+**CLOB extension (first-class for liquid markets):** Polymarket runs a full CLOB for major
+markets (US elections, Fed meetings) on Polygon; Kalshi is an SEC-regulated exchange with
+standard CLOB mechanics. Resting limit orders on YES/NO outcome tokens are *the normal trading
+mechanic* for liquid prediction markets — not a fringe extension. The order-type matrix marks
+limit orders as ❌ for Engine H today; this should be promoted to ✅ when either (a) a Kalshi
+or high-volume Polymarket market is in the run, or (b) a `HasClob` capability flag is set on
+the instrument. This is the highest-priority open item for this engine.
+
 - Default oracle-dispute / incorrect-resolution model and its parameters.
 - Multi-outcome (non-binary) markets — categorical resolution as an extension.

@@ -92,11 +92,20 @@ look-ahead and is structurally prevented (`ts_event ≤ current_ts`).
 
 ## 5. Fill model
 
-- **Option quotes present:** fill against `bid`/`ask` as a taker (limit orders rest and fill on
-  cross); partial fills allowed. Spreads on options are wide — this is the highest-fidelity path.
-- **Surface only:** fill at `model price ± spread_estimate`, where the spread widens with
-  moneyness/illiquidity (configurable). Used when the contract's own quotes are stale/absent
-  (common for far-OTM strikes).
+Three fidelity levels, recorded in the `TradeRecord`:
+
+- **Option quotes present** (`fidelity: quotes`): fill against `bid`/`ask` as a taker (limit
+  orders rest and fill on cross); partial fills allowed. Spreads on options are wide — this is
+  the highest-fidelity path.
+- **Surface only** (`fidelity: surface`): fill at `model price ± spread_estimate`, where the
+  spread widens with moneyness/illiquidity (configurable). Used when the contract's own quotes
+  are stale/absent (common for far-OTM strikes). Accuracy is moderate.
+- **OHLCV only** (`fidelity: ohlcv`): using only option OHLCV bars without an IV surface
+  produces heavily distorted results — option prices embed implied vol, which changes
+  continuously, and a bar close does not reflect a tradeable mid. This path is explicitly flagged
+  in the result as **low accuracy**; the data manifest should warn when no IV surface or quotes
+  are bound for an option instrument.
+
 - **Contract multiplier** (e.g. 100 for US equity options) scales notional and P&L.
 
 ---

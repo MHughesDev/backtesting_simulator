@@ -171,4 +171,9 @@ are the dominant real costs on AMMs.
 - Curve StableSwap Newton-solve tolerances and multi-coin generalization.
 - v3 working-copy persistence policy across closely-spaced observed states.
 - Default MEV/sandwich tax model and visibility threshold.
-- Whether to model failed-transaction gas (reverts still cost gas on-chain).
+- **EVM revert gas (`HasRevertGas`):** on EVM chains (Ethereum, Polygon), a transaction that
+  reverts (e.g., slippage exceeded) still consumes gas up to the revert point. For strategies
+  with high expected revert rates (aggressive slippage tolerances, volatile pools), this cost is
+  material. Modeled as an optional capability flag `HasRevertGas` (off by default); when enabled,
+  a revert still debits the estimated gas via `Account` and emits an auxiliary record tagged
+  `revert_gas`.

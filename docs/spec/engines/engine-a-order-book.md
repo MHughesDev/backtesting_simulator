@@ -59,6 +59,18 @@ The engine must produce honest fills from whatever data exists. Matching adapts 
 **richer data ⇒ more realistic fills**. The mode is detected from the payloads bound for the
 instrument (see [contracts/market-data.md](../contracts/market-data.md)).
 
+**Two price series (equities and futures):** for assets affected by corporate actions or futures
+rolls, two series must be available:
+- **Unadjusted** (actual traded prices): used for fills, P&L, and the book. Engine A always
+  fills against unadjusted prices.
+- **Adjusted / continuous** (backward-adjusted for splits, dividends, or roll gaps): used by
+  the strategy's feature pipeline for signal computation. Engine A does not own signal
+  computation but must preserve the series distinction so fills are not applied to adjusted
+  prices.
+
+The run's data manifest declares which series are bound per instrument; the engine rejects a
+configuration that would apply fills against adjusted prices.
+
 | Fidelity | Data available | Matching behavior |
 |---|---|---|
 | **L3** | `BookDelta`/`BookSnapshot` with per-order detail | True queue-position priority; partial fills as volume trades through your level |
@@ -144,7 +156,7 @@ submit → validate(caps, tick/lot) → apply latency →
 | `HasMarkPrice` | Maintains `mark_price` distinct from last trade; used for unrealized P&L, stops, and liquidation. |
 | `HasLiquidation` / `IsLeveraged` | Each event: query collateral & maintenance margin from `Account`; if `mark` crosses the liquidation price, force-close at bankruptcy/mark price and report. Cascade modeling optional if `LiquidationEvent` data is provided. |
 | `HasExpiry` (futures) | At `expiry_date`, settle open positions at `settlement_price` (cash) or warn/forced-close (physical). |
-| `HasRollSchedule` | At a roll date, emit two fills: close front-month + open back-month at the observed spread. |
+| `HasRollSchedule` | At a roll date, emit two fills: close front-month + open back-month at the observed spread. The **continuous series construction method** — Panama Canal (back-adjusted; prices can go negative; returns accurate), Proportional (ratio-adjusted; levels preserved), or Unadjusted (raw stitch; artificial gaps) — is a per-instrument config parameter. Method selected affects only the adjusted series used for signals; fills always use per-contract unadjusted prices. |
 | `HasSwapRates` (FX) | At the daily rollover, apply `swap_long/short`; triple on Wednesdays; mark across weekend gaps. |
 | `HasShortBorrow` | Accrue borrow cost daily on open short positions via `Account`. |
 | `HasCorporateActions` / `HasTokenEvents` | Apply dividends/splits/mergers/forks/airdrops in strict `ts_event` order before price matching at that timestamp. |
@@ -161,6 +173,11 @@ Each fill (or rejection) produces a `TradeRecord` (see [run-request.md](../run-r
 `execution` (fill price/qty, fees, slippage, partial flag, reject reason, queue info, fidelity
 used), `trigger` (the insight/feature/model values), and `account_context` if an `Account` is
 injected. Funding/borrow/roll cash-flows are emitted as auxiliary records tagged by source.
+
+**Survivorship bias flag:** the run result includes `universe_survivorship_complete: bool` — set
+`true` only if the instrument universe includes all historically-active instruments for the
+period (including delisted). When `false`, results carry an implicit survivorship bias; the
+consuming platform should surface this to the analyst.
 
 ---
 
@@ -179,3 +196,6 @@ injected. Funding/borrow/roll cash-flows are emitted as auxiliary records tagged
 - L3 queue model detail (FIFO vs. pro-rata venues).
 - Liquidation cascade fidelity (self-impact modeling) when only marks are available.
 - Same-bar vs. next-bar market-fill default (currently next-bar open).
+- **Session-aware spread multiplier for FX:** FX spreads widen 3–10× outside the London–NY
+  overlap session. The slippage heuristic should accept a per-session spread multiplier for
+  `HasSwapRates` instruments so that off-hours strategies are not systematically over-optimistic.

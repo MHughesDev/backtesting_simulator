@@ -108,6 +108,11 @@ A `TradeRecord` per fill: `setup` (buy/sell, face amount), `sizing`, `execution`
 accrued, dirty price, spread paid, YTM at fill), `trigger`. Coupon and principal cash-flows are
 emitted as auxiliary records tagged `coupon` / `principal`.
 
+**Roll-down return:** as a bond ages along the yield curve, its mark-to-market price changes
+even with no yield-curve shift (yield converges toward shorter tenors). This roll-down return
+is naturally captured in the daily mark series (mark change net of coupon accrual) and does
+not require a separate computed field — the mark stream is the record.
+
 ---
 
 ## 9. Determinism & ordering
@@ -124,3 +129,9 @@ emitted as auxiliary records tagged `coupon` / `principal`.
 - Liquidity-tier spread calibration.
 - MBS prepayment model selection (PSA multiples, refinancing incentive).
 - Callable/putable bonds (embedded options → may compose with Engine E).
+- **Repo financing cost:** leveraged long bond positions are typically financed via repo
+  (short-term collateralized borrowing). The repo rate (~Fed funds rate ± spread, currently
+  ~4–5% annualized) is a daily carry cost analogous to perpetual funding rates. When
+  `IsLeveraged` is set, Engine D should accrue a `repo_rate` charge daily via `Account`,
+  reported as an auxiliary record tagged `repo`. The repo rate is a run-config parameter
+  (or can be a time-series input for historical accuracy).
