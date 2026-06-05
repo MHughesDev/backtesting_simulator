@@ -38,10 +38,14 @@ readiness check**.
 | Spec | Status |
 |---|---|
 | [engines/README.md](engines/README.md) (selection rule, order-type matrix, composition) | ✅ Defined |
-| [engine-a (Order Book)](engines/engine-a-order-book.md) — full mechanics | ✅ Defined |
-| [engine-b (AMM)](engines/engine-b-amm.md) — full mechanics | ✅ Defined |
-| [engine-e (Derivatives)](engines/engine-e-derivatives.md) — full mechanics | ✅ Defined |
-| engine-c, -d, -f, -g, -h — per-engine internals | 🔲 Deferred (per-phase) |
+| [engine-a (Order Book)](engines/engine-a-order-book.md) | ✅ Defined |
+| [engine-b (AMM)](engines/engine-b-amm.md) | ✅ Defined |
+| [engine-c (NAV)](engines/engine-c-nav.md) | ✅ Defined |
+| [engine-d (Cash Flow)](engines/engine-d-cashflow.md) | ✅ Defined |
+| [engine-e (Derivatives)](engines/engine-e-derivatives.md) | ✅ Defined |
+| [engine-f (Synthetic)](engines/engine-f-synthetic.md) | ✅ Defined |
+| [engine-g (Marketplace)](engines/engine-g-marketplace.md) | ✅ Defined |
+| [engine-h (Event Resolution)](engines/engine-h-event-resolution.md) | ✅ Defined |
 
 ### Runner
 | Spec | Status |
@@ -92,12 +96,14 @@ is made and recorded:
 - ✅ The Run Request (how a run is invoked) and the component registry + trust tiers.
 - ✅ Reproducibility/determinism and look-ahead invariants stated system-wide.
 
-The three **load-bearing engines (A Order Book, B AMM, E Derivatives) are now fully specified**
-— matching/fill models, pool math (v2/v3/Curve), and option pricing/greeks/exercise.
+**All eight engines are now fully specified** — matching/fill models (A), pool math v2/v3/Curve
+(B), NAV/forward-pricing/daily-reset (C), bond cash-flow/yield/duration (D), option
+pricing/greeks/exercise (E), custom-payoff/barriers/financing (F), marketplace listing/sale
+(G), and event-resolution lifecycle (H).
 
-**Remaining work is depth, not architecture** — the five other engine internals (C, D, F, G, H),
-metrics formulas, signals, and the runner — all of which have a fixed architectural frame and
-become tasks inside their phases.
+**Remaining work is depth in the contract layer, not the engine layer** — metrics formulas,
+signals, and the runner — each with a fixed architectural frame, becoming tasks inside their
+phases.
 
 **Conclusion: ready to begin implementation planning.** Next: a long-term plan decomposing the
 end-state into high-level phases, then per-phase files of discrete, atomic tasks.

@@ -21,15 +21,14 @@ Examples:
 |---|---|---|---|
 | **A** — Order Book | `CLOB` | [engine-a-order-book.md](engine-a-order-book.md) | ✅ Defined |
 | **B** — AMM | `AMM` | [engine-b-amm.md](engine-b-amm.md) | ✅ Defined |
-| **C** — NAV | `NAV` | [engine-c-nav.md](engine-c-nav.md) | 🔲 Deferred |
-| **D** — Cash Flow | `DEALER` | [engine-d-cashflow.md](engine-d-cashflow.md) | 🔲 Deferred |
+| **C** — NAV | `NAV` | [engine-c-nav.md](engine-c-nav.md) | ✅ Defined |
+| **D** — Cash Flow | `DEALER` | [engine-d-cashflow.md](engine-d-cashflow.md) | ✅ Defined |
 | **E** — Derivatives | `CHAIN` | [engine-e-derivatives.md](engine-e-derivatives.md) | ✅ Defined |
-| **F** — Synthetic | `OTC` | [engine-f-synthetic.md](engine-f-synthetic.md) | 🔲 Deferred |
-| **G** — Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) | 🔲 Deferred |
-| **H** — Event Resolution | `ORACLE` | [engine-h-event-resolution.md](engine-h-event-resolution.md) | 🔲 Deferred |
+| **F** — Synthetic | `OTC` | [engine-f-synthetic.md](engine-f-synthetic.md) | ✅ Defined |
+| **G** — Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) | ✅ Defined |
+| **H** — Event Resolution | `ORACLE` | [engine-h-event-resolution.md](engine-h-event-resolution.md) | ✅ Defined |
 
-The three load-bearing engines (**A**, **B**, **E**) are fully specified; the remaining five are
-scoped stubs to be authored in their build phases.
+All eight engines are fully specified.
 
 ## What every engine must implement
 
