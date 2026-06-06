@@ -1,5 +1,8 @@
 # Contract Spec: Training (the `Trainer` port)
 
+**Type:** Integration (external training orchestration)  
+**Status:** ✅ Defined  
+
 Some strategies need a model that **changes during the run** — walk-forward refit, periodic
 fine-tuning, online adaptation. This spec defines how the backtest suite drives training
 *without* owning any ML.

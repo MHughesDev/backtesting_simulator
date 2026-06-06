@@ -1,5 +1,6 @@
 # Contract Spec: Result / Metrics
 
+**Type:** Data (output schema contract)  
 **Status:** 🔲 Deferred — to be authored during its implementation phase. The architectural
 frame below is fixed; this file will be expanded into the full spec.
 

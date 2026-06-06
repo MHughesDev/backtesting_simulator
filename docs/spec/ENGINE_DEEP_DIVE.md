@@ -1,6 +1,13 @@
 # Engine Deep Dive — Full Engineering Reference
 
-This document is the authoritative engineering reference for all eight backtesting engines.
+⚠️ **NOTE:** This is a **reference document for quick lookup**, NOT an authoritative spec file.  
+It duplicates content from the actual specs (`engines/engine-*.md` and `run-request.md`).  
+**For authoritative content, refer to:**
+- Engine mechanics: [`engines/engine-a-order-book.md`](engines/engine-a-order-book.md) through [`engines/engine-h-event-resolution.md`](engines/engine-h-event-resolution.md)
+- Run Request schema: [`run-request.md`](run-request.md)
+- Spec organization: [Spec Index & Readiness](README.md)
+
+This document is the combined engineering reference for all eight backtesting engines.
 For each engine it covers: how the underlying real-world market actually works, how the engine
 replicates those mechanics in code, what is unique about this engine vs. the others, and
 exactly what the data contract (Run Request + Instrument + Market Data) requires for this

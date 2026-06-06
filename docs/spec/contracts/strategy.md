@@ -1,5 +1,8 @@
 # Contract Spec: Strategy
 
+**Type:** Data (JSON schema contract)  
+**Status:** ✅ Defined  
+
 A **strategy** is the full, declarative path from data to a trade: universe → features →
 alpha/signal → sizing → risk → order placement. It is expressed in **exactly one format:
 JSON.** There is no second authoring format, no embedded code, and no monolithic callback.
