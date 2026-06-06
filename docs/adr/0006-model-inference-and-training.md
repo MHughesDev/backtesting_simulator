@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/contracts/model.md](../spec/contracts/model.md), [spec/contracts/strategy.md](../spec/contracts/strategy.md) §8
+- **Informed by:** [spec/contracts/model.md](../specs/INTG-002-ai-model-inference-port.md), [spec/contracts/strategy.md](../specs/DATA-006-strategy-contract.md) §8
 
 ## Context
 

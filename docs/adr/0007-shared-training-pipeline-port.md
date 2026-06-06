@@ -3,7 +3,7 @@
 - **Status:** Proposed — refined by [ADR-0008](0008-training-scope-method-visibility-retention.md) (repo topology still to confirm; live-orchestration framing narrowed to context-only per ADR-0008 §4)
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/contracts/training.md](../spec/contracts/training.md),
+- **Informed by:** [spec/contracts/training.md](../specs/INTG-003-training-port.md),
   [ADR-0006](0006-model-inference-and-training.md), [ADR-0005](0005-strategy-not-stored-suite-is-a-library.md)
 
 ## Context
@@ -27,7 +27,7 @@ Two forces must be reconciled: (1) the suite must not own ML or store weights
 2. **The same training pipeline serves backtest and live**; only orchestration differs — the
    suite drives it **synchronously** (pause-train-resume), the platform drives it
    **asynchronously** (background train + hot-swap). This asymmetry is explicit in
-   [training.md](../spec/contracts/training.md) §1.
+   [training.md](../specs/INTG-003-training-port.md) §1.
 3. **The suite owns orchestration and PIT data assembly**, never the training method. It
    decides *when* to refit, assembles `ts_event ≤ as_of` data, enforces determinism, caches
    refits, and records model lineage. The injected `Trainer` does the fitting and returns a
