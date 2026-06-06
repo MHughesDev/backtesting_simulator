@@ -47,4 +47,4 @@ platform) with identical behavior; only the data feed differs.
   and point-in-time data.
 - **Follow-ups:** specify the shared order/execution semantics precisely enough that a separate
   live engine can match them (engine specs); the Run Request boundary is now defined in
-  [run-request.md](../spec/run-request.md).
+  [run-request.md](../specs/DATA-002-run-request.md).

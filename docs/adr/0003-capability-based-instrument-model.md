@@ -47,4 +47,4 @@ execution + NAV valuation).
 - **Negative / accepted tradeoffs:** more upfront modeling rigor (capability taxonomy,
   per-(instrument,engine) manifests); capability/engine compatibility must be validated.
 - **Follow-ups:** finalize the capability taxonomy and the field-level required-data manifests
-  per asset class (detailed spec under `docs/spec/`).
+  per asset class (detailed spec under `docs/specs/`).

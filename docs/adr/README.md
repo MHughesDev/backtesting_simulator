@@ -25,7 +25,7 @@ Proposed → Accepted → (later) Superseded by ADR-XXXX
 ## Relationship to other docs
 
 - **Research** (`docs/research/`) provides the evidence an ADR cites.
-- **Spec** (`docs/spec/`) describes the resulting system; ADRs explain *why* it's that way.
+- **Spec** (`docs/specs/`) describes the resulting system; ADRs explain *why* it's that way.
 - An ADR should link to the research conclusion and/or spec section it informs.
 
 ## Index

@@ -31,7 +31,7 @@ highest-volume engines deep first.* (Recommended; to be confirmed and recorded i
 - [ ] `crates/contracts`: Instrument, capabilities, `MarketEvent` envelope + payload variants
 - [ ] Required-data manifest model + validation
 - [ ] `crates/core`: clock, deterministic event stream, ids
-- [ ] Field-level per-asset data-contract spec under `docs/spec/`
+- [ ] Field-level per-asset data-contract spec under `docs/specs/`
 - [ ] Conformance tests + tiny synthetic fixtures
 
 ## Phase 2 — First engine end-to-end (Engine A: Order Book)

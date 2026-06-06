@@ -233,7 +233,7 @@ DataManifest {
 }
 ```
 
-Each asset spec in `docs/spec/assets/` defines the canonical data manifest for that asset
+Each asset spec (`DATA-009`–`DATA-019`) defines the canonical data manifest for that asset
 class. The manifest is validated at run start; a contract violation produces a typed
 `ManifestViolation` error with the specific missing payload class named.
 

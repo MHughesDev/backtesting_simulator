@@ -1891,7 +1891,7 @@ These resolved rules apply across every engine and complement the per-engine sec
 - **Plans, not nested strategies.** Multiple strategies compose in a **Plan** by data-flow
   (screen `selector` → `entry` → `exit`, or concurrent independents), never by nesting. Capital is
   shared or isolated per `account_mode`; opposing intents resolve per `conflict_policy`. See
-  [contracts/plan.md](contracts/plan.md).
+  [contracts/plan.md](../specs/DATA-007-plan-contract.md).
 
 ---
 
@@ -1899,7 +1899,7 @@ These resolved rules apply across every engine and complement the per-engine sec
 
 Before the first event is processed, the suite runs nine validation passes in strict order.
 All nine must pass or the run is rejected with a precise, typed error. There is no partial
-execution. (This mirrors the authoritative list in [run-request.md](run-request.md) §10; if the
+execution. (This mirrors the authoritative list in [run-request.md](../specs/DATA-002-run-request.md) §10; if the
 two ever drift, the Run Request spec wins.)
 
 **1. Schema:** the Run Request and Strategy JSON are parsed and type-checked against their
@@ -1948,7 +1948,7 @@ proceeds, disclosed in results).
 **8. Plan wiring:** if the bound `strategy` is a Plan (multiple strategies), every
 `universe.from` names a strategy that exists in the Plan and has a compatible role, the wiring is
 acyclic (a DAG of strategies), and `account_mode` / `conflict_policy` are resolvable. Violations
-produce a `PlanWiringError` (see [contracts/plan.md](contracts/plan.md) §8). A single Strategy is
+produce a `PlanWiringError` (see [contracts/plan.md](../specs/DATA-007-plan-contract.md) §8). A single Strategy is
 the degenerate one-node Plan and passes this trivially.
 
 **9. Cohort / scanner:** if a `scanner` universe is used, its `cohort` names a bound cohort data

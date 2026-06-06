@@ -293,7 +293,7 @@ simulates, so a strategy behaves identically in backtest and live.
 ## 10. Open decisions
 
 The table below is the **blocking** subset. The full design backlog — blocking and
-exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
+exploratory — lives in [`docs/open-questions.md`](../open-questions.md).
 
 **Recent resolutions (2026-06):** The AA (market-data depth/derivation) and BB (multi-asset/scanning)
 batches resolved 16 new payload types, 11 capability flags, cross-instrument references, scanner

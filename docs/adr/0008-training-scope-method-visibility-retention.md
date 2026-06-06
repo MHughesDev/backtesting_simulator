@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/contracts/training.md](../spec/contracts/training.md);
+- **Informed by:** [spec/contracts/training.md](../specs/INTG-003-training-port.md);
   refines [ADR-0007](0007-shared-training-pipeline-port.md)
 
 ## Context

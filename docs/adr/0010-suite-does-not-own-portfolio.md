@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/run-request.md](../spec/run-request.md); resolves OD/Q-ACCT-1;
+- **Informed by:** [spec/run-request.md](../specs/DATA-002-run-request.md); resolves OD/Q-ACCT-1;
   extends [ADR-0005](0005-strategy-not-stored-suite-is-a-library.md)
 
 ## Context
@@ -54,4 +54,4 @@ from the TradeRecord stream + the injected account, not by the core.
   `Account`; portfolio metrics are a downstream/optional layer rather than core; the injected
   account must itself be deterministic to preserve reproducibility.
 - **Follow-ups:** define the `Account` port precisely; scope the optional reference adapter;
-  specify how metrics consume the TradeRecord stream ([contracts/metrics.md](../spec/contracts/metrics.md), TBD).
+  specify how metrics consume the TradeRecord stream ([contracts/metrics.md](../specs/DATA-008-result-metrics-contract.md), TBD).

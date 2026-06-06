@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/contracts/strategy.md](../spec/contracts/strategy.md); resolves MASTER_SPEC OD-5
+- **Informed by:** [spec/contracts/strategy.md](../specs/DATA-006-strategy-contract.md); resolves MASTER_SPEC OD-5
 
 ## Context
 
@@ -54,4 +54,4 @@ The strategy declares a tunable *parameter space*; concrete values/sweeps come f
   inlining code; we must define and police the expression-vs-component boundary.
 - **Follow-ups:** component registry trust/sandbox model (resolved, ADR-0011); expression grammar
   scope and declarative fill-reaction model (tracked in strategy.md §16); the Run Request schema
-  (resolved, [run-request.md](../spec/run-request.md)).
+  (resolved, [run-request.md](../specs/DATA-002-run-request.md)).

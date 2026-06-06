@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-04
 - **Deciders:** Project owner
-- **Informed by:** [spec/component-registry.md](../spec/component-registry.md); resolves OD-7 / Q-REG-1
+- **Informed by:** [spec/component-registry.md](../specs/COMP-001-component-registry.md); resolves OD-7 / Q-REG-1
 
 ## Context
 
