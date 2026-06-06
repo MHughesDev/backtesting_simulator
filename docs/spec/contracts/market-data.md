@@ -223,24 +223,47 @@ TokenEvent {
 }
 ```
 
-### 2.9 NFT events (`IsUnique`)
+### 2.9 Listing marketplace events (`IsUnique` or `IsFungibleSKU`)
+
+These payloads are valid for any `MARKETPLACE` instrument regardless of whether it represents
+an NFT, a physical good, or a commodity SKU.
 
 ```
-NftEvent {
-  token_id:    TokenId,
-  event_type:  NftEventType,
-  // NftEventType = Sale   { price, buyer, seller, marketplace, gas_cost }
-  //             | Listing { price, marketplace }
-  //             | Delisting { marketplace }
+ListingEvent {
+  listing_id:    ListingId,         // unique identifier for this specific listing
+  event_type:    ListingEventType,
+  // ListingEventType =
+  //   Created  { asking_price, quantity, condition_tier?, attributes?, shipping_cost? }
+  //   Sold     { sale_price, buyer_id?, platform_fee, royalty?, gas_cost?, shipping_cost? }
+  //   Removed
+  //   PriceChanged { new_price }
+  item_id:      Option<ItemId>,     // set for IsUnique items; null for IsFungibleSKU
+  sku_id:       Option<SkuId>,      // set for IsFungibleSKU items; null for IsUnique
+  venue_id:     VenueId,
+  seller_id:    Option<String>,
 }
 
-FloorUpdate {
-  collection_address: Address,
-  floor_price:        Decimal,
-  listed_count:       u32,
-  volume_24h:         Decimal,
+ComparableMarkEvent {
+  category_id:   String,
+  mark_price:    Decimal,
+  mark_type:     Floor | MedianSale | LastSale | ModelEstimate,
+  sample_count:  u32,      // number of comparable data points supporting this mark
+  lookback_days: u16,
+  source:        String,
 }
 ```
+
+`ListingEvent` replaces the former NFT-only `NftEvent`; `ComparableMarkEvent` replaces the
+former `FloorUpdate`. The `mark_type` field on `ComparableMarkEvent` distinguishes the nature
+and uncertainty of the mark — `Floor` is the lowest active asking price (instantaneous, can
+vanish), `MedianSale` and `LastSale` are sale-history derived (more stable), and `ModelEstimate`
+is caller-supplied. See [engines/engine-g-marketplace.md](../engines/engine-g-marketplace.md) §8
+for mark quality and uncertainty disclosure rules.
+
+The `attributes` field on `ListingEvent.Created` carries caller-defined structured metadata
+(condition grade, dimensions, material, technical specs, rarity traits) used by Engine G for
+item filtering and comparable matching. Richer content (description text, images) travels
+through the Exogenous-Signal Plane as `DocumentSignal` / `MediaReference` payloads.
 
 ### 2.10 Prediction market events (`IsBinary`, `HasResolution`)
 
@@ -558,28 +581,33 @@ bankruptcy price, reports the close to `Account`, and notifies the strategy. `In
 supplies the fund balance context that makes ADL plausible. Both are optional; absent them, ADL is
 not modeled.
 
-### 2.23 NFT bid events (`IsUnique`, `HasFloor`)
+### 2.23 Offer events (`HasOffer`)
 
 ```
-NftBidEvent {
-  collection_address: Address,
-  token_id:           Option<TokenId>,
-  trait_filter:       Option<Vec<TraitFilter>>,
-  bid_price:          Decimal,
-  bid_size:           Option<Decimal>,
-  bidder:             Option<Address>,
-  marketplace:        String,
-  expiration_ts:      Option<i64>,
+OfferEvent {
+  listing_id:    ListingId,
+  offer_price:   Decimal,
+  quantity:      Option<Decimal>,
+  offerer_id:    Option<String>,
+  outcome:       Pending | Accepted | Rejected | Countered | Withdrawn | Expired,
+  counter_price: Option<Decimal>,   // set when outcome = Countered
+  expiration_ts: Option<i64>,
 }
 ```
 
-`NftBidEvent` carries standing collection/trait/token bids. **It does not produce an immediate
-sell fill in the default (conservative) model.** Engine G's default sell path still requires an
-observed comparable sale at or above the listing price — a standing bid can be withdrawn, may be
-wash activity, or may not have actually executed against the strategy's specific token, so
-assuming a fill against it would be optimistic. `NftBidEvent` instead feeds the **optional demand
-model** (higher fidelity, more assumptions) used to estimate fill probability and timing. See
-[engines/engine-g-marketplace.md](../engines/engine-g-marketplace.md) §4.
+`OfferEvent` carries offer-and-response history for `HasOffer` instruments: buyer offers below
+asking price, seller counter-offers, acceptances, and rejections. **A standing bid or offer with
+outcome `Pending` does not produce an immediate fill in the conservative model.** Engine G's
+default sell and offer paths require an observed `OfferEvent.outcome = Accepted` to produce a
+fill — an outstanding offer can be withdrawn or rejected before settlement, so treating a pending
+offer as a guaranteed fill would be optimistic. Pending offers with stated bid prices feed the
+**optional demand model** (higher fidelity, more assumptions) used to estimate fill probability
+and time-to-fill. See
+[engines/engine-g-marketplace.md](../engines/engine-g-marketplace.md) §6.
+
+`OfferEvent` also carries seller-initiated offers (e.g. "best offer" or seller discount
+outreach). When a seller offer arrives, the engine checks whether the strategy has configured
+an `accept_if` rule and records a fill if the offer meets the threshold.
 
 ### 2.24 Prediction market lifecycle (`IsBinary`, `HasResolution`, `HasOracleRisk`)
 
@@ -669,6 +697,34 @@ intervals may **never** be derived from coarser data. Full rules in
 **Caller-provided bars are never overridden.** If the caller binds a `Bar` stream at a given
 interval, the engine uses it and does not emit a `DerivedBar` for that interval (precedence rule,
 [run-request.md](../run-request.md) §4).
+
+### 2.27 Timed auction events (`HasTimedAuction`)
+
+```
+AuctionBidEvent {
+  listing_id:      ListingId,
+  bid_price:       Decimal,
+  bidder_id:       Option<String>,
+  is_reserve_met:  Option<bool>,   // whether this bid meets or exceeds the reserve price
+}
+
+AuctionCloseEvent {
+  listing_id:      ListingId,
+  winning_bid:     Option<Decimal>, // null when reserve was not met
+  winner_id:       Option<String>,
+  reserve_met:     bool,
+}
+```
+
+`AuctionBidEvent` records each historical bid on a timed auction listing; required when
+`HasTimedAuction` is set. Events replay in `ts_event` order so the engine can determine the
+highest bid at any simulation timestamp. `AuctionCloseEvent` fires at `auction_close_ts` and
+determines the fill outcome. A `winning_bid` of null (reserve not met) produces no fill.
+
+**Ordering within an auction.** Multiple bids at the same `ts_event` are ordered by `seq`.
+The engine considers the strategy outbid if any `AuctionBidEvent` with `ts_event` ≤
+`auction_close_ts` carries a `bid_price` strictly greater than the strategy's bid — regardless
+of `bidder_id`. The engine does not simulate autobid increment strategies.
 
 ---
 

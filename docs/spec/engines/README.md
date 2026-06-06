@@ -25,7 +25,7 @@ Examples:
 | **D** — Cash Flow | `DEALER` | [engine-d-cashflow.md](engine-d-cashflow.md) | ✅ Defined |
 | **E** — Derivatives | `CHAIN` | [engine-e-derivatives.md](engine-e-derivatives.md) | ✅ Defined |
 | **F** — Synthetic | `OTC` | [engine-f-synthetic.md](engine-f-synthetic.md) | ✅ Defined |
-| **G** — Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) | ✅ Defined |
+| **G** — Listing Marketplace | `MARKETPLACE` | [engine-g-marketplace.md](engine-g-marketplace.md) | ✅ Defined |
 | **H** — Event Resolution | `ORACLE` | [engine-h-event-resolution.md](engine-h-event-resolution.md) | ✅ Defined |
 
 All eight engines are fully specified.
