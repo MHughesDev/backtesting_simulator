@@ -1,8 +1,12 @@
 # Asset Spec: NFTs
 
-**Engine:** G (Marketplace)
+**Engine:** G (Listing Marketplace)
 **`price_formation`:** `MARKETPLACE`
-**Capabilities:** `IsUnique | HasRarity | HasFloor | IsIlliquid`
+**Capabilities:** `IsUnique | HasRarity | HasFloor | IsIlliquid | HasGasCost | HasRoyalty`
+
+NFTs are a specific form of `ListingAsset` (`asset_class: NFT`). Engine G is a generalized
+listing marketplace engine — see [engine-g-marketplace.md](../engines/engine-g-marketplace.md)
+for the full spec. This document covers the NFT-specific data requirements and mechanics.
 
 ---
 
@@ -147,31 +151,42 @@ OPTIONAL:
 
 ### Payload variants used
 
-| Payload | Description |
+NFTs use the generalized Engine G payload types — see
+[market-data.md](../contracts/market-data.md) §2.9 and §2.23 for full field definitions.
+
+| Payload | NFT usage |
 |---|---|
-| `NftEvent(Sale) { token_id, price, buyer, seller, marketplace, ts }` | Realized sale |
-| `NftEvent(Listing) { token_id, price, marketplace, ts }` | New listing |
-| `NftEvent(Delisting) { token_id, marketplace, ts }` | Listing removed |
-| `Mark { price }` | Collection floor price (best available mark for unrealized P&L) |
+| `ListingEvent(Created)` | Token listed for sale at a price on a marketplace |
+| `ListingEvent(Sold)` | Token sold; carries sale price, buyer, marketplace, gas, royalty |
+| `ListingEvent(Removed)` | Token delisted without a sale |
+| `ListingEvent(PriceChanged)` | Seller reduced or changed the asking price |
+| `ComparableMarkEvent(Floor)` | Collection floor price — lowest active listing across the collection |
+| `OfferEvent` | Standing collection/trait/token bids (`HasOffer` instruments only) |
+
+For NFTs: `item_id = token_id`, `category_id = collection_address`, `chain_id = "eth"` (or
+`"sol"`, etc.). The `ListingEvent.Created.attributes` field carries token traits and rarity rank.
 
 ---
 
 ## 4. Engine behavior (Engine G)
 
-Engine G simulates a **marketplace**: listings, bids, and sales — not a CLOB.
+Engine G is the **Listing Marketplace** engine — NFTs are one class of instrument it simulates.
+The full mechanics are specified in
+[engine-g-marketplace.md](../engines/engine-g-marketplace.md). NFT-specific behavior:
 
-- **Buy execution:** the strategy submits a buy order specifying a max price. The engine checks
-  whether any token is listed at or below that price at the event timestamp. If yes, fill at
-  listing price + gas. If no, order is unfilled.
-- **Sell (list) execution:** the strategy submits a listing at a specified price. The engine
-  records the listing. A sale occurs when a simulated buyer arrives (driven by historical
-  demand / price-acceptance model, or conservatively: only at the next observed sale price
-  for a similar token).
-- **Unrealized P&L mark:** marked to collection floor price as the best available proxy for
-  a token's value when not in the process of being sold.
+- **Buy execution:** the strategy submits a buy order with a max price and optional trait
+  filter. The engine checks whether any matching token is listed at or below that price at
+  `decision_ts`. If yes, fill at the lowest qualifying asking price plus gas, marketplace fee,
+  and creator royalty. If no qualifying listing exists, the order is unfilled.
+- **Sell (list) execution:** the strategy submits a listing at a chosen price. The conservative
+  default fills only at the next observed comparable sale at or above the listing price. The
+  optional demand model estimates fill probability from `OfferEvent` bid depth and historical
+  demand.
+- **Unrealized P&L mark:** marked to the collection floor price (`ComparableMarkEvent`,
+  `mark_type: Floor`) as the best available proxy for a token's value.
 
-**Important limitation:** because there is no continuous price, the engine cannot simulate
-fills at arbitrary prices. Buy orders are matched against actual historical listings only.
+**Core constraint:** because there is no continuous price, the engine cannot simulate fills
+at arbitrary prices. Buy orders are matched against actual historical listings only.
 
 ---
 
@@ -191,16 +206,18 @@ fills at arbitrary prices. Buy orders are matched against actual historical list
 ## 6. Implications for system design
 
 1. **OHLCV does not apply.** There is no `high`, `low`, or continuous `close` for an
-   individual NFT. The `Bar` payload is never emitted for NFTs. Only `Mark` (floor) at the
-   collection level and `NftEvent` (sales/listings) at token level are valid.
+   individual NFT. The `Bar` payload is never emitted for NFTs. Only `ComparableMarkEvent`
+   (floor/comparable) at the collection level and `ListingEvent` (sales/listings) at token
+   level are valid.
 2. **Sparse data requires different handling.** Events may be hours or days apart. The engine
-   must not interpolate price between sales — absence of a sale is meaningful information.
-3. **Positions are token-ID-specific.** The portfolio tracks `{ collection_address, token_id }`
-   as the position key, not just `{ collection_address }`.
+   does not interpolate price between sales — absence of a sale is meaningful information.
+3. **Positions are token-ID-specific.** The portfolio tracks `(category_id, item_id)` —
+   equivalently `(collection_address, token_id)` — not just `collection_address`.
 4. **NFT backtesting has fundamental limits.** Because liquidity is sparse and the buy price
-   depends on what is actually listed, simulation results have high uncertainty. Results should
-   always be accompanied by a confidence interval or sensitivity analysis. This should be
-   disclosed in the result contract.
+   depends on what is actually listed, simulation results have high uncertainty. The engine
+   attaches an uncertainty disclosure to every result (fill-rate, days-to-sell distribution,
+   mark quality, assumption sensitivity) — see
+   [engine-g-marketplace.md](../engines/engine-g-marketplace.md) §11.
 
 ---
 

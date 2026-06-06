@@ -18,7 +18,7 @@ This is the single field that selects the engine. Every other classification is 
 | `DEALER` | D — Cash Flow | Bonds, CDs (yield-derived, dealer market) |
 | `CHAIN` | E — Derivatives | Options, warrants |
 | `OTC` | F — Synthetic | CFDs, swaps, structured products |
-| `MARKETPLACE` | G — Marketplace | NFTs |
+| `MARKETPLACE` | G — Marketplace | NFTs, digital collectibles, physical goods, commodity used goods, listing-based marketplaces (eBay, Facebook Marketplace, etc.) |
 | `ORACLE` | H — Event Resolution | Prediction markets |
 
 ---
@@ -80,10 +80,15 @@ instrument whose `price_formation` routes to one of those engines.
 | `HasPoolReserves` | Pool reserve data is valid | Engine B |
 | `HasConcentratedLiquidity` | Tick-based concentrated liquidity (v3-style) | Engine B |
 | `HasGasCost` | Gas costs are a real P&L component | Engine B, G |
-| `IsUnique` | Non-fungible; position tracked by token ID, not quantity | Engine G |
-| `HasRarity` | Rarity traits and scores are valid | Engine G |
-| `HasFloor` | Collection floor price is a valid mark | Engine G |
-| `IsIlliquid` | Sparse data; no continuous price; gap interpolation not valid | Engine G |
+| `IsUnique` | Non-fungible; position keyed by `(category_id, item_id)`; no two items are interchangeable | Engine G |
+| `IsFungibleSKU` | Commodity listing; position keyed by `(sku_id, condition_tier)`; many interchangeable units of the same product. Mutually exclusive with `IsUnique`. | Engine G |
+| `HasRarity` | Rarity traits and scores are caller-provided and valid for filtering and attribution | Engine G |
+| `HasFloor` | Category floor price is a valid mark source (`mark_type: Floor` in `ComparableMarkEvent`) | Engine G |
+| `IsIlliquid` | Sparse data; no continuous price; gap interpolation is not valid | Engine G |
+| `HasTimedAuction` | Listings are timed auctions; fill occurs at auction close against the observed highest bid | Engine G |
+| `HasOffer` | Offer and counter-offer events are valid; offer-acceptance fill path is active | Engine G |
+| `HasRoyalty` | Creator or seller royalty applies; enforced as a real P&L line per transaction | Engine G |
+| `HasPhysicalFulfillment` | Shipping and pickup costs are first-class P&L components; assumed non-zero when set | Engine G |
 | `IsBinary` | Resolves to $1 or $0 | Engine H |
 | `HasResolution` | Resolution events will be emitted | Engine H |
 | `HasOracleRisk` | Oracle dispute possible | Engine H |
@@ -174,9 +179,22 @@ Instrument {
   par_value:         Option<Decimal>,
   credit_rating:     Option<String>,
 
-  // IsUnique (NFTs)
-  collection_address: Option<Address>,
-  token_id:           Option<TokenId>,
+  // IsUnique — non-fungible; position keyed by (category_id, item_id)
+  category_id: Option<String>,  // collection, product family, or listing category
+                                //   NFTs: collection contract address
+                                //   Physical goods: "couches", "dining_tables", ...
+  item_id:     Option<String>,  // specific token, listing, lot, or serial identifier
+                                //   NFTs: token_id
+                                //   Physical goods: listing_id assigned at data ingestion
+                                //   May be null in the instrument definition for scanning strategies
+                                //   that acquire whichever qualifying item appears first
+  chain_id:    Option<String>,  // blockchain identifier for on-chain assets (eth, sol, polygon, ...);
+                                //   absent for off-chain marketplaces
+
+  // IsFungibleSKU — commodity listing; position keyed by (sku_id, condition_tier)
+  sku_id:          Option<String>,  // canonical product identifier (GTIN, ASIN, part number, custom)
+  condition_tier:  Option<String>,  // default condition tier for this instrument definition
+                                    //   ("new", "used_like_new", "used_good", "used_acceptable", "for_parts")
 
   // HasMakerTakerFees (crypto CEX)
   fee_schedule:      Option<Vec<FeeTier>>,
@@ -230,7 +248,8 @@ AssetClass =
   | Option
   | Bond
   | FX
-  | NFT
+  | ListingAsset     // general: any listing marketplace asset (physical goods, commodity used goods, ...)
+  | NFT              // specific form of ListingAsset; on-chain, non-fungible
   | PredictionMarket
   | Synthetic
   | Other(String)
