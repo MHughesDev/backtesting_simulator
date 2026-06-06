@@ -44,7 +44,7 @@ unchanged in backtest and live.
 
 | | **Strategy JSON** | **Run Request** ([run-request.md](../run-request.md)) |
 |---|---|---|
-| Contains | Reusable logic: universe, features, models, alpha, sizing, risk, execution; declared *parameter space* | Concrete run context: which strategy, data source bindings, date range, starting capital, *parameter values or sweep*, RNG seed, accounting currency |
+| Contains | Reusable logic: universe, features, ai_endpoints, alpha, sizing, risk, execution; declared *parameter space* | Concrete run context: which strategy, data source bindings, date range, starting capital, *parameter values or sweep*, RNG seed, accounting currency |
 | Lifetime | Portable; identical across backtest and live | Per-invocation |
 | Owns sizing logic? | Yes | No |
 | Owns parameter *space*? | Yes (declares types + ranges) | Picks concrete *values* or a sweep over the declared space |
@@ -61,17 +61,17 @@ Data flows through named stages. Each stage produces **named values**; later sta
 those names. This is the "give each stage what it needs" model — explicit bindings, no globals.
 
 ```
-universe   → the set of instruments in scope (static or a registered dynamic selector)
-features   → indicators / derived series from PIT data (vectorizable, pre-computable)
-models     → AI model inference nodes (emit named outputs + confidence)
-alpha      → insights: direction + confidence per instrument, from features/model outputs
-sizing     → target positions (fixed, algorithmic, or derived from alpha/model output)
-risk       → constraints/stops/kill-switches that can veto or resize targets
-execution  → orders: order type, TIF, slicing, slippage tolerance (capability-gated)
+universe      → the set of instruments in scope (static or a registered dynamic selector)
+features      → indicators / derived series from PIT data (vectorizable, pre-computable)
+ai_endpoints  → AI inference / agent nodes (emit named outputs + confidence)
+alpha         → insights: direction + confidence per instrument, from features/endpoint outputs
+sizing        → target positions (fixed, algorithmic, or derived from alpha/endpoint output)
+risk          → constraints/stops/kill-switches that can veto or resize targets
+execution     → orders: order type, TIF, slicing, slippage tolerance (capability-gated)
 ```
 
-Evaluation order is fixed: `universe → features → models → alpha → sizing → risk → execution`.
-`features` and `models` outputs are addressable by every downstream stage; a later stage may
+Evaluation order is fixed: `universe → features → ai_endpoints → alpha → sizing → risk → execution`.
+`features` and `ai_endpoints` outputs are addressable by every downstream stage; a later stage may
 not read a stage that runs after it.
 
 ---
@@ -88,7 +88,7 @@ not read a stage that runs after it.
   "parameters": { /* §5  declared parameter SPACE */ },
   "universe":   { /* §6 */ },
   "features":   [ /* §7 */ ],
-  "models":     [ /* §8  AI inference (+ optional training) */ ],
+  "ai_endpoints": [ /* §8  AI inference */ ],
   "alpha":      { /* §9 */ },
   "sizing":     { /* §10  first-class; not always fixed */ },
   "risk":       { /* §11 */ },
@@ -106,8 +106,8 @@ a separate format):
 | Reference | Resolves to |
 |---|---|
 | `"feature:rsi14"` | a named feature output |
-| `"model:sentiment.value"` | a named model output field |
-| `"model:sentiment.confidence"` | a model confidence output |
+| `"ai:sentiment.value"` | a named AI endpoint output field |
+| `"ai:sentiment.confidence"` | an AI endpoint confidence output |
 | `"signal:news_volume"` | an exogenous signal stream on the current instrument (see [signals.md](signals.md)) |
 | `"data:close"` | a raw market-data field on the **current** instrument |
 | `"param:rsi_period"` | a declared parameter's value (bound by the run request) |
@@ -245,31 +245,35 @@ registry `ref`. Outputs are named for downstream binding. These are designed to 
 
 ---
 
-## 8. `models` — AI inference (and optional training)
+## 8. `ai_endpoints` — AI inference
 
-Models are **pre-trained and external by default**. The strategy *calls* a model by ID,
-passes it the data it needs each time inference runs, and binds the outputs. The suite never
-stores weights and never trains unless a strategy explicitly opts in (§8.2). See
+AI endpoints are **external by default** — pre-trained models, agent runtimes, or pipelines.
+The strategy *calls* an endpoint by ID, passes it the data it needs each time inference runs,
+and binds the outputs. The suite never stores weights or agent code. See
 [model.md](model.md) and [ADR-0006](../../adr/0006-model-inference-and-training.md).
 
 ### 8.1 Inference node
 
 ```jsonc
-"models": [
+"ai_endpoints": [
   {
-    "id": "sentiment",                       // node name; outputs addressed as model:sentiment.*
+    "id": "sentiment",                       // node name; outputs addressed as ai:sentiment.*
 
-    "model_id": "news-sentiment",            // logical model the platform resolves at runtime
-    "model_version": "3.2.1",                // pinned for reproducibility (required)
-    "inference_fn": "predict_proba",         // which function/signature on the model to call
+    "endpoint_id": "news-sentiment",         // logical endpoint the platform resolves at runtime
+    "version":     "3.2.1",                  // pinned for reproducibility (required)
+    "endpoint_type": "model",                // model | agent_runtime | pipeline (informational)
+    "scope":       "data_scoped",            // data_scoped | archived_tools_only | live_external
+                                             //   live_external → rejected at validation for backtests
 
-    "inputs": {                              // feature bindings: model-input-name → value ref
+    "inference_fn": "predict_proba",         // which function/signature on the endpoint to call
+
+    "inputs": {                              // feature bindings: endpoint-input-name → value ref
       "embeddings":    "feature:embed_news",
       "price_context": "feature:vol20"
     },
     "input_window": { "lookback": "7d" },    // PIT window of data fed each inference (≤ current ts)
 
-    "context_inputs": {                      // OPTIONAL — PIT exogenous bundles assembled per call (§8.3)
+    "context_inputs": {                      // OPTIONAL — PIT exogenous bundles assembled per call (§8.2)
       "recent_posts": { "from": "social_x.posts", "lookback": "1h", "max_items": 200 },
       "headlines":    { "from": "news.headlines", "lookback": "24h" }
     },
@@ -281,8 +285,8 @@ stores weights and never trains unless a strategy explicitly opts in (§8.2). Se
     //   { "cron": "0 0 * * MON" }      schedule-based
 
     "outputs": {
-      "value":      "sentiment_score",       // primary output name (→ model:sentiment.value)
-      "confidence": "sentiment_conf"         // confidence output name (→ model:sentiment.confidence)
+      "value":      "sentiment_score",       // primary output name (→ ai:sentiment.value)
+      "confidence": "sentiment_conf"         // confidence output name (→ ai:sentiment.confidence)
     },
 
     "fallback": {                            // behavior if inference fails / is unavailable / stale
@@ -291,59 +295,26 @@ stores weights and never trains unless a strategy explicitly opts in (§8.2). Se
       "max_staleness": "2d"                  // older than this → treat as failure
     },
 
-    "determinism": { "seed": 42 },           // seeded inference for reproducibility
-
-    "training": { /* §8.2 — optional, omitted = pure inference */ }
+    "determinism": { "seed": 42 }            // seeded inference for reproducibility
   }
 ]
 ```
 
-**Required fields:** `id`, `model_id`, `model_version`, `inference_fn`, `inputs`, `frequency`,
+**Required fields:** `id`, `endpoint_id`, `version`, `inference_fn`, `inputs`, `frequency`,
 `outputs.value`, `fallback.policy`. Everything else is optional with defaults.
 
 **Look-ahead safety:** `inputs` and `input_window` may only reference data with
-`ts_event ≤ current_ts`. The suite enforces this; a model literally cannot be handed future
+`ts_event ≤ current_ts`. The suite enforces this; an endpoint literally cannot be handed future
 data.
-
-### 8.2 Optional training / fitting
-
-Off by default. When present and `enabled`, the suite orchestrates *when* to (re)fit and *with
-what point-in-time data*, but the **training method itself is a registered, preconfigured
-routine owned by the caller** — the suite does not own training algorithms. The `method` field
-is an **identifier** the injected `Trainer` resolves (the *what*, not the *how*); it lives in
-the strategy because it is part of the strategy's reproducible definition. Full mechanics —
-the `Trainer` port, pause-train-resume, visibility, and retention — are in
-[training.md](training.md). See [ADR-0008](../../adr/0008-training-scope-method-visibility-retention.md).
-
-```jsonc
-"training": {
-  "enabled": true,
-  "method": "walk_forward_refit",            // a registered, preconfigured training method
-  "schedule": { "rolling_window": "1y", "step": "1mo" },
-  "train_data_window": "2y",                 // data range used to fit; strictly ≤ current ts
-  "params": { "learning_rate": 0.001, "epochs": 5 },
-  "freeze_after_first": false                // true = fit once at warmup, then inference-only
-}
-```
-
-**Invariants** (full detail in [training.md](training.md)):
-- Training data is strictly point-in-time (`ts_event ≤ current_ts`) — how walk-forward avoids
-  look-ahead.
-- Training is deterministic (seeded); refit points are cached by
-  `(base_version, method, data_window, params, seed)` so a sweep does not retrain redundantly.
-- **Visibility:** training sees only the strategy's **bound features** — the same surface the
-  model sees at inference, never arbitrary universe data.
-- **Retention:** a run keeps exactly two artifacts — the **initial** (as passed in) and the
-  **current** (latest trained); intermediates are discarded on supersession.
 
 ---
 
-### 8.3 `context_inputs` — point-in-time exogenous bundles (multimodal inference)
+### 8.2 `context_inputs` — point-in-time exogenous bundles (multimodal inference)
 
-Beyond structured feature `inputs`, a model node may request **point-in-time context bundles** of
-exogenous data assembled fresh at each inference call. This is how a model runs over the news,
-social posts, images, and videos that existed at time *t* — essential for meme-coin, NFT, and
-event-driven strategies.
+Beyond structured feature `inputs`, an endpoint node may request **point-in-time context
+bundles** of exogenous data assembled fresh at each inference call. This is how an endpoint
+runs over the news, social posts, images, and videos that existed at time *t* — essential for
+meme-coin, NFT, listing-marketplace, and event-driven strategies.
 
 Each `context_inputs` entry names a bound signal source/stream (from the Run Request `signals`
 block, see [run-request.md](../run-request.md) §4c) and a `lookback` window:
@@ -357,10 +328,10 @@ block, see [run-request.md](../run-request.md) §4c) and a `lookback` window:
 ```
 
 At each inference call the suite collects, from each named stream, every record with
-`ts_available ≤ current_ts` inside the window (capped by `max_items`), and hands the bundle to the
-injected `Model` port alongside the structured `inputs`. For `MediaReference`/`DocumentSignal`
+`ts_available ≤ current_ts` inside the window (capped by `max_items`), and hands the bundle to
+the injected AI endpoint alongside the structured `inputs`. For `MediaReference`/`DocumentSignal`
 items the bundle carries **references** (URIs + modality + any pre-extracted features); the
-**injected model resolves the URIs and loads the raw bytes** — the suite never parses media.
+**injected endpoint resolves the URIs and loads the raw bytes** — the suite never parses media.
 Look-ahead is enforced for the bundle (nothing with `ts_available > current_ts` appears), and the
 bundle is assembled deterministically. Full contract: [signals.md](signals.md) §5.
 
@@ -377,9 +348,9 @@ Complex logic belongs in a registered alpha component (`ref`), not a giant expre
   "insights": [
     {
       "id": "long_oversold_positive",
-      "when": "feature:rsi14 < param:oversold && model:sentiment.value > param:sentiment_floor",
+      "when": "feature:rsi14 < param:oversold && ai:sentiment.value > param:sentiment_floor",
       "direction": "long",
-      "confidence": "model:sentiment.confidence",   // expression or a bound value
+      "confidence": "ai:sentiment.confidence",      // expression or a bound value
       "horizon": "5d"
     },
     {
@@ -415,7 +386,7 @@ and supports fixed, algorithmic, and alpha/model-derived methods.
 | `fixed_fractional` | A fixed % of equity per position |
 | `volatility_target` | Algorithmic: scale so position vol ≈ target |
 | `from_alpha` | Proportional to insight confidence/score |
-| `from_model` | Directly from a model output (e.g. `model:position_sizer.value`) |
+| `from_model` | Directly from an AI endpoint output (e.g. `ai:position_sizer.value`) |
 | `kelly` | Kelly fraction from win/loss estimates |
 | `equal_weight` | Split capital across active insights |
 | `ref:<id>` | A registered custom sizing component |
@@ -520,8 +491,8 @@ the degenerate one-node Plan. Full spec: [plan.md](plan.md).
   before it must become a registered component? (Risk: JSON becoming a programming language.)
 - **Declarative fill reactions:** the precise model for reacting to partial fills / rejections
   without imperative callbacks.
-- **Model registry & reproducibility:** how the platform guarantees `model_id@version`
-  resolves to identical weights at backtest time and months later.
+- **AI endpoint registry & reproducibility:** how the platform guarantees `endpoint_id@version`
+  resolves to identical weights/code at backtest time and months later.
 
 > **Resolved since first draft:** multi-strategy portfolios → the **Plan** layer ([plan.md](plan.md),
 > OD-6); component-registry trust model → tiered built-in/native/WASM ([component-registry.md](../component-registry.md),

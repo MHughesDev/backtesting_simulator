@@ -69,9 +69,8 @@ adapter ships as an *optional* convenience, but the core never assumes one.
   "signals":    { /* §4c  exogenous-signal sources (news/social/macro/media, multi-source, optional) */ },
   "cohorts":    { /* §4d  market-wide data sources that materialize instruments dynamically (scanner universe, optional) */ },
   "account":    { /* §5  injected Account port (optional) */ },
-  "models":     { /* §6  injected Model port bindings */ },
-  "trainer":    { /* §6  injected Trainer port (optional) */ },
-  "components": { /* §6  injected custom registry components (optional) */ },
+  "ai_endpoints": { /* §6  injected AI endpoint bindings */ },
+  "components":   { /* §6  injected custom registry components (optional) */ },
 
   "parameters": { /* §8  concrete values OR a sweep over the strategy's declared space */ },
 
@@ -85,7 +84,7 @@ adapter ships as an *optional* convenience, but the core never assumes one.
 }
 ```
 
-Everything under `data`, `account`, `models`, `trainer`, `components` is an **injected port** —
+Everything under `data`, `account`, `ai_endpoints`, `components` is an **injected port** —
 the caller supplies an implementation; the suite calls it. None of these are owned by the suite.
 
 ---
@@ -148,7 +147,7 @@ what payload class and resolution the data contains before reading any rows:
 | Field | Required | Description |
 |---|---|---|
 | `uri` | Yes | Path or reference to the data source |
-| `payload_class` | Yes | The `MarketEvent` payload type this data contains (`Bar`, `Trade`, `Quote`, `BookSnapshot`, `BookDelta`, `OrderBookOrderEvent`, `PoolState`, `Funding`, `IVSurface`, `Nav`, `NftEvent`, `HoldingsSnapshot`, `YieldCurve`, `GasEvent`, etc.) |
+| `payload_class` | Yes | The `MarketEvent` payload type this data contains (`Bar`, `Trade`, `Quote`, `BookSnapshot`, `BookDelta`, `OrderBookOrderEvent`, `PoolState`, `Funding`, `IVSurface`, `Nav`, `ListingEvent`, `HoldingsSnapshot`, `YieldCurve`, `GasEvent`, etc.) |
 | `binding_type` | No | `"event_stream"` (replayed chronologically through the clock) or `"reference"` (loaded once, queried by timestamp). Default `"event_stream"`. See §4b. |
 | `interval` | For Bar only | Bar duration: `1s`, `5s`, `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`, `1w`, `1mo`. Absent for tick-level data. |
 | `adjusted` | For Bar only | Whether prices are split/dividend-adjusted (`true`) or unadjusted (`false`). Default `false`. |
@@ -360,7 +359,7 @@ Two non-negotiables for this plane (detail in [contracts/signals.md](contracts/s
   but effective at Y>X is actionable at X. Streams missing `ts_available` default it to `ts_event`.
 
 **Raw media** (`MediaReference`, `DocumentSignal` with a `uri`) is carried as a **point-in-time
-reference only** — the suite never loads or parses the bytes. The injected `Model` port resolves
+reference only** — the suite never loads or parses the bytes. The injected AI endpoint resolves
 the URI and performs multimodal inference (see [contracts/strategy.md](contracts/strategy.md) §8
 `context_inputs`).
 
@@ -453,23 +452,37 @@ never defines the accounting internals. The port must be deterministic (no hidde
 
 ---
 
-## 6. Injected ports: models, trainer, components
+## 6. Injected ports: ai_endpoints, components
 
 The remaining caller-owned dependencies, wired per run:
 
 ```jsonc
-"models": {
-  "news-sentiment": { "adapter": "onnx", "uri": "...", "version": "3.2.1" }
+"ai_endpoints": {
+  "news-sentiment": {
+    "adapter":       "onnx",
+    "uri":           "...",
+    "version":       "3.2.1",
+    "endpoint_type": "model",
+    "scope":         "data_scoped"
+  },
+  "listing-scorer": {
+    "adapter":       "injected:my_agent_runtime",
+    "version":       "1.0.0",
+    "endpoint_type": "agent_runtime",
+    "scope":         "archived_tools_only"
+  }
 },
-"trainer": { "port": "injected:training_pipelines" },     // omit if no strategy trains
 "components": {
-  "my_factor_model": { "kind": "wasm", "uri": "..." },     // see Component Registry trust model
+  "my_factor_model": { "kind": "wasm", "uri": "..." },    // see Component Registry trust model
   "top_n_by_volume": { "kind": "builtin" }
 }
 ```
 
-- `models` resolve the `model_id@version` referenced in the strategy (see [contracts/model.md](contracts/model.md)).
-- `trainer` is the injected `Trainer` (see [contracts/training.md](contracts/training.md)).
+- `ai_endpoints` resolve the `endpoint_id@version` referenced in the strategy's `ai_endpoints`
+  block (see [contracts/model.md](contracts/model.md)). Each entry declares an `adapter` (how the
+  suite calls the endpoint), an `endpoint_type` (informational: `model | agent_runtime | pipeline`),
+  and a `scope` (safety-critical: `data_scoped | archived_tools_only | live_external`). Endpoints
+  declaring `live_external` are rejected at validation for all backtest runs.
 - `components` bind any custom registry components the strategy references (built-in ones need no binding).
 
 ---
@@ -566,10 +579,11 @@ At run start, before any event is processed:
 2. **Parameter bounds** — supplied values/sweeps lie within the strategy's declared space.
 3. **Instruments** — capabilities valid; `price_formation` routes to a real engine.
 4. **Data manifest** — each instrument's required payloads are bound (§4); else `ManifestViolation`.
-5. **Port presence** — if the strategy uses account-relative sizing/risk, margin, models, or
-   training, the corresponding injected port is present; else a typed error. If the strategy
-   references a `signal:<id>` or a model `context_inputs.from` source, the corresponding `signals`
-   source/stream is bound (§4c); else `SignalNotBound`.
+5. **Port presence** — if the strategy uses account-relative sizing/risk, margin, or
+   `ai_endpoints`, the corresponding injected port is present; else a typed error. If the strategy
+   references a `signal:<id>` or an endpoint `context_inputs.from` source, the corresponding
+   `signals` source/stream is bound (§4c); else `SignalNotBound`. Endpoints declaring
+   `live_external` scope are rejected at this step with `ScopeViolation`.
 6. **Capability/order-type** — execution order types are valid for each instrument's engine.
 7. **Data sufficiency** — per-engine minimum data requirements are checked against the declared
    descriptors; else `DataSufficiencyError` (see below).
@@ -624,7 +638,7 @@ results.
 | D (DEALER) | Any one of: `Bar`/`Mark` with clean prices, `YieldUpdate`, `YieldCurve`. |
 | E (CHAIN) | `IVSurface` for the underlying AND underlying price data (`Bar`/`Quote`/`Trade`). Both required — either alone is rejected. |
 | F (OTC) | All underlyings referenced by the payoff component must have price data bound AND the payoff component must be registered in `components`. |
-| G (MARKETPLACE) | `NftEvent` stream with timestamps. |
+| G (MARKETPLACE) | `ListingEvent` stream with timestamps. |
 | H (ORACLE) | Price/probability stream (`Bar` or `Quote` for YES/NO tokens) AND `Resolution` event stream. `MarketLifecycleEvent` strongly recommended. |
 
 **Capability-gated data that triggers `DataSufficiencyError` when missing:**
@@ -635,7 +649,7 @@ results.
 - Engine B, `HasGasCost` set but no `GasEvent` stream and no static gas config in `execution_defaults` → error.
 - Engine D, `HasCoupon` set but no `Coupon` stream → error.
 - Engine D, `HasCreditRisk` set but no `CreditSpread` or `CreditRatingEvent` stream → error.
-- Engine G, `HasFloor` set but no `FloorUpdate` stream and strategy holds positions → error.
+- Engine G, `HasFloor` set but no `ComparableMarkEvent` stream and strategy holds positions → error.
 - Engine G, `HasGasCost` set but no `GasEvent` stream and no static gas config → error.
 - Engine H, no `Resolution` stream → error (cannot simulate settlement).
 
