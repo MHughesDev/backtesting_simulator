@@ -26,7 +26,7 @@ result rather than papered over.
 ## 1. Price formation: what MARKETPLACE means
 
 Three properties define `MARKETPLACE` price formation and distinguish it from every other
-mechanic in this suite:
+mechanic in this simulator:
 
 1. **Episodic price discovery.** A price exists only when a transaction completes. Between
    transactions there is no bid-ask spread, no NAV, no AMM formula, and no mark-to-market
@@ -65,7 +65,7 @@ impl Engine for MarketplaceEngine {
 ```
 
 Cash is held in the injected `Account`
-([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)). `MARKETPLACE` instruments carry
+([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)). `MARKETPLACE` instruments carry
 no `Bar` payloads — only `ListingEvent`s and `ComparableMarkEvent`s constitute their market
 data stream.
 

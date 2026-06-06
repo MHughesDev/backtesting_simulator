@@ -84,7 +84,7 @@ backtester and every result is suspect.
 
 The full design backlog — blocking and exploratory — is tracked in
 [open-questions.md](./open-questions.md) (stable `Q-AREA-n` IDs). The highest-leverage open items
-carried into build/planning phases include: the run-queue orchestration boundary (suite vs. caller),
+carried into build/planning phases include: the run-queue orchestration boundary (simulator vs. caller),
 the expression-vs-component boundary in strategy JSON, model-registry reproducibility over time,
 training-artifact validation gating, and the first end-to-end vertical slice (which asset class to
 prove first).

@@ -221,7 +221,7 @@ Engine E is a **valuation engine**, not just a matching engine. It:
    without a vol input; the data manifest enforces this strictly.
 2. **Options create multi-instrument portfolios implicitly.** A delta-hedged option position
    involves the option AND the underlying. Both must be in the same run with a shared clock.
-3. **Pricing model is a suite-level concern.** The caller provides data; the engine owns the
+3. **Pricing model is a simulator-level concern.** The caller provides data; the engine owns the
    pricing model (Black-Scholes baseline). This is one case where the "build it ourselves"
    principle from ADR-0002 matters most — inheriting a pricing model means inheriting its
    assumptions.

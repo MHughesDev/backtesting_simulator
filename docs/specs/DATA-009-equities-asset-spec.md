@@ -53,7 +53,7 @@ limit order book (CLOB)** — a resting queue of bids and offers matched by pric
 | `vwap` | decimal | Volume-weighted average price (optional but improves fill modeling) |
 | `interval` | duration | e.g. 1m, 5m, 1d |
 
-**Critical:** the backtesting suite must maintain **two price series** in parallel:
+**Critical:** the trading simulator must maintain **two price series** in parallel:
 - **Adjusted prices** — split- and dividend-adjusted backward; used for signal computation and
   indicator calculation.
 - **Unadjusted prices** — actual traded prices at each date; used for fill modeling and P&L
@@ -183,7 +183,7 @@ OPTIONAL (improves fill modeling):
    first-class field on `Bar`, not a post-processing step.
 2. **Corporate actions are events, not static metadata.** They must flow through the same
    event stream as price data so the engine processes them in strict time order.
-3. **Survivorship bias cannot be enforced by the suite** (we own no data), but the result
+3. **Survivorship bias cannot be enforced by the simulator** (we own no data), but the result
    contract should include a `universe_has_dead_tickers: bool` flag the caller sets to
    document this choice.
 4. **Sessions change behavior, not just liquidity.** The engine must know whether to accept

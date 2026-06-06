@@ -27,7 +27,7 @@ impl Engine for CashFlowEngine {
 ```
 
 Cash and positions live in the injected `Account`
-([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 
 ---
 

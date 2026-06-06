@@ -12,7 +12,7 @@ frame below is fixed; this file will be expanded into the full spec.
 ## Purpose
 
 Defines what a run returns and how performance/risk metrics are computed. Per
-[ADR-0010](../adr/0010-suite-does-not-own-portfolio.md), the suite emits a per-trade
+[ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md), the simulator emits a per-trade
 **`TradeRecord` stream** (and per-event marks); aggregate portfolio metrics are computed
 **downstream** over those records plus the injected `Account` — not assumed by the core.
 
@@ -30,7 +30,7 @@ Defines what a run returns and how performance/risk metrics are computed. Per
 ## Fixed constraints (already decided)
 
 - Computed over the `TradeRecord` stream defined in [run-request.md](DATA-002-run-request.md) §7.
-- The suite owns no portfolio; aggregate metrics are an optional analytics layer over the
+- The simulator owns no portfolio; aggregate metrics are an optional analytics layer over the
   injected `Account`.
 - Deterministic and reproducible.
 
@@ -38,4 +38,4 @@ Defines what a run returns and how performance/risk metrics are computed. Per
 
 - [run-request.md](DATA-002-run-request.md) (TradeRecord shape), per-asset metric extensions in
   the asset specs ([DATA-009](DATA-009-equities-asset-spec.md)–[DATA-019](DATA-019-prediction-markets-asset-spec.md)),
-  [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md).
+  [ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md).

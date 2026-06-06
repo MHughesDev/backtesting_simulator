@@ -35,7 +35,7 @@ impl Engine for OrderBookEngine {
 - `settle` force-closes open positions at end of run (or contract expiry).
 - The engine **owns no portfolio**: equity, buying power, positions, and collateral are read
   from the injected `Account` port; simulated fills are reported back to it
-  ([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+  ([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 
 ---
 

@@ -46,7 +46,7 @@ A component is, formally, a **pure function with optional state**:
 
 | | **Built-in** | **Custom** |
 |---|---|---|
-| Who writes it | The suite (a standard library) | You, your platform's users, or an AI |
+| Who writes it | The simulator (a standard library) | You, your platform's users, or an AI |
 | Referenced by | `type` (e.g. `"type": "RSI"`) | `ref` (e.g. `"ref": "my_factor_model"`) |
 | Bound in Run Request | No binding needed | Bound under `components` with a `kind` |
 | Trust | Audited, first-party | Depends on who wrote it (§4) |
@@ -66,7 +66,7 @@ custom — must be:
 3. **Parallel-safe** — no shared mutable global state (the run queue runs many in parallel).
 4. **Deterministic** — same inputs ⇒ same outputs, every time.
 
-These are the same invariants the whole suite guarantees. A component that violates them would
+These are the same invariants the whole simulator guarantees. A component that violates them would
 silently corrupt determinism, reproducibility, or look-ahead safety.
 
 ---
@@ -92,7 +92,7 @@ language for simple inline logic (no code at all).
 | Tier | Form | Trust required | How §3 is ensured | Speed |
 |---|---|---|---|---|
 | **Expression** | A typed expression string in the JSON | None | Restricted grammar — can't do anything but compute over named values | ⭐ Fastest |
-| **Built-in** | Rust, compiled into the suite | Full (first-party) | Code review + tests | ⭐ Fastest |
+| **Built-in** | Rust, compiled into the simulator | Full (first-party) | Code review + tests | ⭐ Fastest |
 | **Trusted plugin** | Native Rust (`cdylib`) | Full (you control it) | You vouch for it; same process | ⭐ Fast |
 | **Sandboxed** | **WASM** module | **None** | **Enforced by the sandbox** — the code physically cannot do I/O, read the clock, or touch the network unless the host grants it (we don't) | ✅ Fast (near-native) |
 
@@ -103,10 +103,10 @@ fight the parallel run queue, and it cannot enforce purity). Python may still be
 ### What is WASM and a "sandbox"? (plain language)
 
 **WASM** (WebAssembly) is a portable, compiled binary format. You write a component in almost
-any language (Rust, C, AssemblyScript, Go…) and compile it to a small `.wasm` file the suite
+any language (Rust, C, AssemblyScript, Go…) and compile it to a small `.wasm` file the simulator
 can load and run.
 
-A **sandbox** is a sealed room for that code. When the suite runs a `.wasm` component inside an
+A **sandbox** is a sealed room for that code. When the simulator runs a `.wasm` component inside an
 embedded WASM runtime (e.g. `wasmtime`), the code inside **can only do arithmetic and talk to
 the host through functions we explicitly hand it.** By default it **cannot** read files, open
 network connections, read the system clock, or spawn threads. Those abilities simply do not
@@ -145,7 +145,7 @@ trust tier (see [run-request.md](DATA-002-run-request.md) §6):
 }
 ```
 
-`kind` ∈ `builtin | native | wasm`. The suite validates that every `ref` in the strategy is
+`kind` ∈ `builtin | native | wasm`. The simulator validates that every `ref` in the strategy is
 bound before the run starts.
 
 ---

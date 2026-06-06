@@ -26,7 +26,7 @@ shared contracts are a dependency-free kernel external systems depend on (ADR-00
 
 | Component | Responsibility | Spec |
 |-----------|----------------|------|
-| System overview | Master map linking all specs | [SYS-001](./specs/SYS-001-backtesting-simulator-overview.md) |
+| System overview | Master map linking all specs | [SYS-001](./specs/SYS-001-trading-simulator-overview.md) |
 | Contract Validator | Validate instruments + per-`(instrument, engine)` data manifest; reject under-specified runs | [DATA-003](./specs/DATA-003-instrument-contract.md), [DATA-004](./specs/DATA-004-market-data-contract.md) |
 | Runner & Run Queue | Schedule single/many concurrent runs; parallelism, determinism, streaming | [COMP-002](./specs/COMP-002-runner-and-run-queue.md) |
 | Component Registry | Built-in / native / WASM components strategies wire together; trust tiers | [COMP-001](./specs/COMP-001-component-registry.md) |
@@ -76,7 +76,7 @@ no `match asset_type` branching in engine logic.
 | PyO3 / maturin | Python bindings over the Rust core | [ADR-0001](./adr/0001-runtime-rust-python-hybrid.md) |
 | Injected `Model` port (caller-supplied) | AI/ML inference (no model ownership) | [ADR-0006](./adr/0006-model-inference-and-training.md), [INTG-002](./specs/INTG-002-ai-model-inference-port.md) |
 | Injected `Trainer` port (caller-supplied) | Opt-in point-in-time (re)training | [ADR-0007](./adr/0007-shared-training-pipeline-port.md), [INTG-003](./specs/INTG-003-training-port.md) |
-| Injected `Account` port (caller-supplied) | Portfolio/ledger queries (no portfolio ownership) | [ADR-0010](./adr/0010-suite-does-not-own-portfolio.md), [INTG-001](./specs/INTG-001-account-ledger-port.md) |
+| Injected `Account` port (caller-supplied) | Portfolio/ledger queries (no portfolio ownership) | [ADR-0010](./adr/0010-simulator-does-not-own-portfolio.md), [INTG-001](./specs/INTG-001-account-ledger-port.md) |
 
 > Deliberately minimal: anything defining a trade, price, payoff, or metric is built in-house
 > ([ADR-0002](./adr/0002-minimal-external-dependencies.md)).
@@ -87,12 +87,12 @@ A map into [`adr/`](./adr/), newest first:
 
 - [ADR-0012](./adr/0012-standalone-contracts-kernel.md) — standalone, dependency-free contracts kernel
 - [ADR-0011](./adr/0011-component-registry-trust-model.md) — tiered component trust (built-in / native / WASM)
-- [ADR-0010](./adr/0010-suite-does-not-own-portfolio.md) — injected `Account`; suite owns no portfolio
+- [ADR-0010](./adr/0010-simulator-does-not-own-portfolio.md) — injected `Account`; simulator owns no portfolio
 - [ADR-0009](./adr/0009-end-state-system-no-mvp.md) — build the end-state system, no MVP subset
 - [ADR-0008](./adr/0008-training-scope-method-visibility-retention.md) — training scope/visibility/retention
 - [ADR-0007](./adr/0007-shared-training-pipeline-port.md) — training via an injected port
 - [ADR-0006](./adr/0006-model-inference-and-training.md) — model inference + opt-in training
-- [ADR-0005](./adr/0005-strategy-not-stored-suite-is-a-library.md) — suite is a library; stores nothing
+- [ADR-0005](./adr/0005-strategy-not-stored-simulator-is-a-library.md) — simulator is a library; stores nothing
 - [ADR-0004](./adr/0004-strategy-json-pipeline.md) — single declarative JSON strategy pipeline
 - [ADR-0003](./adr/0003-capability-based-instrument-model.md) — capability-based instrument model
 - [ADR-0002](./adr/0002-minimal-external-dependencies.md) — minimal external dependencies

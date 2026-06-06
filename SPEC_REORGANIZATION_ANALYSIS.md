@@ -38,7 +38,7 @@ ENGINE_DEEP_DIVE.md §9: "The Run Request — Line by Line"
 
 #### 2. **Missing Integration Specs** — TYPE NOT EXPLICITLY DECLARED
 
-The following are Integration specs (external dependencies the suite calls) but aren't clearly labeled:
+The following are Integration specs (external dependencies the simulator calls) but aren't clearly labeled:
 
 | Port | Current location | Issue |
 |---|---|---|
@@ -46,7 +46,7 @@ The following are Integration specs (external dependencies the suite calls) but 
 | **Trainer** | `contracts/training.md` | ✅ Exists, but not labeled as Integration |
 | **Account** | `run-request.md` §5 | 🔲 Embedded in Run Request; no standalone Integration spec |
 
-**Acceptance criteria:** "Integration spec exists if the suite calls external code to satisfy a need."  
+**Acceptance criteria:** "Integration spec exists if the simulator calls external code to satisfy a need."  
 → All three ports fit. Account should have a dedicated spec or be expanded in run-request.md.
 
 ---
@@ -155,7 +155,7 @@ Defines the declarative pipeline for trading strategies: universe → features �
 
 **Type:** Integration (external AI/ML inference dependency)  
 **Status:** ✅ Defined  
-Defines how the suite calls external AI endpoints for inference without owning or training models.
+Defines how the simulator calls external AI endpoints for inference without owning or training models.
 
 ---
 ```
@@ -176,14 +176,14 @@ Defines how the suite calls external AI endpoints for inference without owning o
 **Type:** Integration  
 **Status:** ✅ Defined  
 
-The suite does not own the portfolio ledger. The Account port is the interface the suite
+The simulator does not own the portfolio ledger. The Account port is the interface the simulator
 calls to query equity, positions, and collateral, and to report fills.
 
 ## Acceptance Criteria
 - [ ] Account implementation can answer: "what is current equity?"
 - [ ] Account implementation can answer: "what positions do I hold?"
 - [ ] Account implementation can answer: "what is my buying power?"
-- [ ] Suite can report a fill to Account and Account updates its state atomically
+- [ ] Simulator can report a fill to Account and Account updates its state atomically
 - [ ] Account interface is synchronous (no I/O blocking in the hot loop)
 ```
 
@@ -253,7 +253,7 @@ Status: 🔲 Deferred
 **Type:** Data (output schema contract)  
 **Status:** 🔲 Deferred — to be authored in metrics/results implementation phase  
 
-Defines the shape of results returned by the suite: the TradeRecord stream and aggregate
+Defines the shape of results returned by the simulator: the TradeRecord stream and aggregate
 metrics computed from it. Metrics are both universal (returns, Sharpe, drawdown) and
 capability-gated (greeks, funding P&L, gas costs, Brier score).
 
@@ -311,7 +311,7 @@ Defines a data structure, schema, or contract that flows through the system.
 - `run-request.md` — Run Request structure
 
 ### Type: **Component** (Internal Service / Module)
-An internal piece of the suite with a defined interface (Engine, Runner, Registry, etc.).
+An internal piece of the simulator with a defined interface (Engine, Runner, Registry, etc.).
 
 **When to create:** When you're specifying how an internal system works.  
 **Acceptance criteria:** Interface defined; behavior specified; testable.
@@ -322,9 +322,9 @@ An internal piece of the suite with a defined interface (Engine, Runner, Registr
 - `component-registry.md` — Registry trust model
 
 ### Type: **Integration** (External Dependency / Port)
-How the suite interacts with external systems or code the caller provides.
+How the simulator interacts with external systems or code the caller provides.
 
-**When to create:** When the suite calls code outside its process/control.  
+**When to create:** When the simulator calls code outside its process/control.  
 **Acceptance criteria:** Interface defined; expectations clear; error handling specified.
 
 **Examples:**

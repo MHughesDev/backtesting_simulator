@@ -8,7 +8,7 @@
 ## Context
 
 Strategies are declarative JSON that wire together **components** (indicators, alpha/sizing
-functions, universe selectors) by ID. The suite ships built-in components, but custom ones are
+functions, universe selectors) by ID. The simulator ships built-in components, but custom ones are
 needed when built-ins are insufficient. A custom component is **code that runs inside the
 deterministic event loop**, so it must be pure, point-in-time, parallel-safe, and deterministic.
 
@@ -23,7 +23,7 @@ Adopt a **tiered registry**:
 
 1. **Expression** — a restricted, typed expression grammar inside the JSON for simple inline
    logic. No code; trivially safe.
-2. **Built-in** — Rust components compiled into the suite (the standard library). First-party,
+2. **Built-in** — Rust components compiled into the simulator (the standard library). First-party,
    audited; the fast path for the vast majority of strategies.
 3. **Trusted plugin** — native Rust (`cdylib`) for first-party extensions where the code is
    controlled and maximum speed is wanted.

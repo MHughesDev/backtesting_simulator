@@ -118,7 +118,7 @@ strategies, wired by the candidate set — not one blob and not nested ifs.
 
 ## 5. Capital across strategies (`account_mode`)
 
-The suite owns no portfolio ([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)); this
+The simulator owns no portfolio ([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)); this
 governs how the injected `Account` is shared:
 
 | Mode | Meaning |
@@ -128,7 +128,7 @@ governs how the injected `Account` is shared:
 
 Portfolio-level netting/risk **beyond** the Account (cross-strategy exposure aggregation, overlay
 risk) remains the caller's analytics layer, consistent with the integration boundary in
-[MASTER_SPEC.md](SYS-001-backtesting-simulator-overview.md) §8.
+[MASTER_SPEC.md](SYS-001-trading-simulator-overview.md) §8.
 
 ---
 

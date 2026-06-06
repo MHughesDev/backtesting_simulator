@@ -9,10 +9,10 @@
 
 The cross-boundary types — instrument, market-data envelope, the strategy JSON schema, the
 `Model` / `Trainer` / `Account` ports, and the **order/execution semantics** — are consumed by
-three peer systems: this **backtest suite**, the **training-pipelines** package, and the
+three peer systems: this **backtest simulator**, the **training-pipelines** package, and the
 **trading platform** (including its live engine). They are a **shared kernel** — the common
-language those peers speak. The question is whether to keep them inside the backtest suite (and
-have others depend on the suite) or to treat them as a standalone package.
+language those peers speak. The question is whether to keep them inside the backtest simulator (and
+have others depend on the simulator) or to treat them as a standalone package.
 
 The owner has chosen to design the **end-state** system (ADR-0009) and requires strict
 **backtest↔live parity**, which is only guaranteed if both speak the *same* contract definitions
@@ -23,7 +23,7 @@ rather than two copies that can drift.
 Treat the contracts as a **standalone, dependency-free, independently-publishable shared
 kernel**. Concretely:
 
-1. Author `crates/contracts` with **zero dependencies on the rest of the suite** — only types,
+1. Author `crates/contracts` with **zero dependencies on the rest of the simulator** — only types,
    traits (ports), and the order/execution semantics.
 2. **Outside systems depend on `contracts`, never on the backtest engine.** The training package
    and the platform's live engine consume the kernel directly.
@@ -33,7 +33,7 @@ kernel**. Concretely:
 
 ## Alternatives considered
 
-- **Contracts live in the suite; others depend on the suite** — fewer moving parts now, but
+- **Contracts live in the simulator; others depend on the simulator** — fewer moving parts now, but
   semantically wrong (why would a live engine depend on the backtester?), risks pulling in
   engine code, and makes parity drift-prone. Rejected as the end-state.
 - **Duplicate contracts per system** — guarantees drift between backtest and live. Rejected
@@ -48,5 +48,5 @@ kernel**. Concretely:
   trivial mechanical move.
 - **Negative / accepted tradeoffs:** the `contracts` crate must be kept rigorously dependency-free
   (a discipline, enforced in review/CI); eventually an extra package to version and release.
-- **Follow-ups:** enforce "contracts has no intra-suite deps" in CI; decide repo vs. monorepo
+- **Follow-ups:** enforce "contracts has no intra-simulator deps" in CI; decide repo vs. monorepo
   topology when the training package / platform materialize (Q-REPO-2).

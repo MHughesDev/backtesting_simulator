@@ -1,6 +1,6 @@
 # Open Questions
 
-A living backlog of unresolved design questions for the backtesting suite. This is the
+A living backlog of unresolved design questions for the trading simulator. This is the
 exploratory layer *above* the decisions: when a question here is answered, it graduates into an
 **ADR** (the durable decision) and/or a **spec** edit, and is marked resolved.
 
@@ -19,10 +19,10 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## A. Scope & separation of concerns
 
-- **Q-SCOPE-1** Does the suite hold portfolio/account/cash state during a run, or is even that an injected, caller-owned ledger?
-- **Q-SCOPE-2** Should the suite expose a streaming/online mode (feed one event at a time) so backtest and live share a single code path, in addition to batch historical replay?
-- **Q-SCOPE-3** Is forward/paper testing (running on a live feed, no historical data) in scope for the suite, or strictly platform-only?
-- **Q-SCOPE-4** Does the suite ever emit orders to an external sink, or is it strictly simulate-and-return?
+- **Q-SCOPE-1** Does the simulator hold portfolio/account/cash state during a run, or is even that an injected, caller-owned ledger?
+- **Q-SCOPE-2** Should the simulator expose a streaming/online mode (feed one event at a time) so backtest and live share a single code path, in addition to batch historical replay?
+- **Q-SCOPE-3** Is forward/paper testing (running on a live feed, no historical data) in scope for the simulator, or strictly platform-only?
+- **Q-SCOPE-4** Does the simulator ever emit orders to an external sink, or is it strictly simulate-and-return?
 - **Q-SCOPE-5** Should there be a "replay live divergence" debug mode (feed recorded live data to explain backtest-vs-live differences)?
 - **Q-SCOPE-6** Is portfolio analytics (beyond a single strategy's metrics) in scope, or platform-only?
 
@@ -30,14 +30,14 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 - **Q-DATA-1** What is the canonical on-the-wire input format — Arrow IPC, Parquet, JSON, or an injected `DataReader` trait (caller decides storage)?
 - **Q-DATA-2** How are data **gaps / missing bars** represented and handled — forward-fill, explicit gap marker, error, or strategy-configurable?
-- **Q-DATA-3** Are events assumed pre-sorted by `ts_event`, or does the suite buffer-and-sort? What's the out-of-order policy?
+- **Q-DATA-3** Are events assumed pre-sorted by `ts_event`, or does the simulator buffer-and-sort? What's the out-of-order policy?
 - **Q-DATA-4** How are coarse sources (daily bars) and fine sources (ticks) normalized onto one nanosecond clock in a mixed run?
 - **Q-DATA-5** How is data **revision / restatement** handled (point-in-time fundamentals, corrected prints)?
 - **Q-DATA-6** Can a single run's dataset exceed memory — is streaming / memory-mapping from disk supported, or in-memory only?
 - **Q-DATA-7** Is there a standalone data-validation/lint pass the caller can run *before* a backtest?
 - **Q-DATA-8** How are multiple venues for the same asset reconciled (consolidated tape vs. per-venue instruments)?
 - **Q-DATA-9** Who owns **entity mapping** (this news/signal/instrument refers to AAPL) — always the caller?
-- **Q-DATA-10** What is the contract for "as-of" vs. "latest" reads, and can the suite detect an as-of violation?
+- **Q-DATA-10** What is the contract for "as-of" vs. "latest" reads, and can the simulator detect an as-of violation?
 
 ## C. Instruments & capabilities
 
@@ -92,21 +92,21 @@ noted. Nothing here is decided; these are prompts for discussion.
 - **Q-MODEL-5** How is a missing/misaligned feature handled at inference (error vs. impute vs. fallback)?
 - **Q-MODEL-6** How does the platform guarantee `model_id@version` resolves to identical weights months later? *(OD-10)*
 - **Q-TRAIN-1** Validation gating: may a freshly trained artifact be rejected (worse than incumbent) and the previous `current` retained? Where is the policy declared? *(OD-12)*
-- **Q-TRAIN-2** Is the refit cache per-run only, or persisted across runs (which implies the suite touching storage — tension with ADR-0005)?
+- **Q-TRAIN-2** Is the refit cache per-run only, or persisted across runs (which implies the simulator touching storage — tension with ADR-0005)?
 - **Q-TRAIN-3** Is online/incremental update (vs. full refit) ever represented, or always a full `train` call?
 - **Q-TRAIN-4** How is training **cost** surfaced and budgeted in the run queue and benchmarks?
 
 ## G. Signals / alternative data
 
 - **Q-SIG-1** Final `signals.md` schema: what does the `Signal` payload carry, and what capability flag gates it?
-- **Q-SIG-2** How is point-in-time integrity of a signal **attested** (caller responsibility) and can the suite detect obvious violations?
-- **Q-SIG-3** ~~Should raw documents (text) ever enter the suite, or only pre-computed numeric/categorical features?~~ **RESOLVED:** the core never parses raw media/text; it carries point-in-time **references** (`MediaReference`/`DocumentSignal` with a `uri`) that the injected `Model` port resolves and loads for multimodal inference ([signals.md](specs/DATA-005-signals-contract.md) §4–§5).
+- **Q-SIG-2** How is point-in-time integrity of a signal **attested** (caller responsibility) and can the simulator detect obvious violations?
+- **Q-SIG-3** ~~Should raw documents (text) ever enter the simulator, or only pre-computed numeric/categorical features?~~ **RESOLVED:** the core never parses raw media/text; it carries point-in-time **references** (`MediaReference`/`DocumentSignal` with a `uri`) that the injected `Model` port resolves and loads for multimodal inference ([signals.md](specs/DATA-005-signals-contract.md) §4–§5).
 - **Q-SIG-4** How are frequency mismatches handled (a daily sentiment signal vs. minute bars)?
 - **Q-SIG-5** How are signals keyed to instruments (entity mapping keys supplied by the caller)?
 
 ## H. Portfolio, accounting, currency
 
-- **Q-ACCT-1** ~~Does the suite own the portfolio/cash ledger during a run, or is it injected?~~ **RESOLVED:** no — per-trade model + injected `Account` port ([ADR-0010](adr/0010-suite-does-not-own-portfolio.md)).
+- **Q-ACCT-1** ~~Does the simulator own the portfolio/cash ledger during a run, or is it injected?~~ **RESOLVED:** no — per-trade model + injected `Account` port ([ADR-0010](adr/0010-simulator-does-not-own-portfolio.md)).
 - **Q-ACCT-2** Single base currency per run, or multi-currency with FX conversion — and where does the FX rate stream come from?
 - **Q-ACCT-3** How is **settlement timing** modeled (T+2 equities, T+0 crypto, coupon/dividend pay dates)?
 - **Q-ACCT-4** How is buying power / margin computed across **mixed asset classes** in one portfolio?
@@ -137,8 +137,8 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## K. Run queue, performance, parallelism
 
-- **Q-QUEUE-1** How much orchestration lives in the suite vs. the platform? *(OD-2)*
-- **Q-QUEUE-2** Is the **parameter-sweep search** (grid/random/Bayesian) in the suite or the platform?
+- **Q-QUEUE-1** How much orchestration lives in the simulator vs. the platform? *(OD-2)*
+- **Q-QUEUE-2** Is the **parameter-sweep search** (grid/random/Bayesian) in the simulator or the platform?
 - **Q-QUEUE-3** How is the immutable dataset shared across parallel runs without copying (zero-copy/Arc)?
 - **Q-QUEUE-4** Is determinism guaranteed **bit-identical regardless of thread count**?
 - **Q-QUEUE-5** Are run cancellation, timeouts, and per-run memory caps supported?
@@ -204,7 +204,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 - **Q-TEST-1** Are reference datasets synthetic-only, and how are engine fills validated against known-good references (e.g. real Uniswap swaps, option prices)?
 - **Q-TEST-2** Which invariants get property-based tests (no look-ahead, cash conservation, deterministic replay)?
-- **Q-TEST-3** Is there a public **conformance suite** a data provider can run to certify their feed satisfies the contracts?
+- **Q-TEST-3** Is there a public **conformance simulator** a data provider can run to certify their feed satisfies the contracts?
 
 ## U. Packaging & distribution
 
@@ -216,7 +216,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 ## V. Repo topology
 
 - **Q-REPO-1** ~~Standalone `*-contracts` package or depend on this repo's `crates/contracts`?~~ **RESOLVED:** standalone, dependency-free shared kernel; built here now, extracted when a 2nd consumer exists; outside systems depend on `contracts`, never the engine ([ADR-0012](adr/0012-standalone-contracts-kernel.md)).
-- **Q-REPO-2** Mono-repo vs. multi-repo for the suite / training / platform contracts?
+- **Q-REPO-2** Mono-repo vs. multi-repo for the simulator / training / platform contracts?
 
 ## W. Security & safety
 
@@ -233,11 +233,11 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 ## Y. Statistical methodology
 
-- **Q-STAT-1** Does the suite provide overfitting safeguards (walk-forward splits, out-of-sample holdout, deflated Sharpe)?
+- **Q-STAT-1** Does the simulator provide overfitting safeguards (walk-forward splits, out-of-sample holdout, deflated Sharpe)?
 - **Q-STAT-2** Is multiple-testing correction offered for large parameter sweeps?
 - **Q-STAT-3** Are Monte Carlo / bootstrap resampling of results built in?
 - **Q-STAT-4** Is transaction-cost sensitivity analysis a first-class feature?
-- **Q-STAT-5** Beyond mechanical look-ahead enforcement, does the suite detect subtler leakage (e.g. model temporal contamination)?
+- **Q-STAT-5** Beyond mechanical look-ahead enforcement, does the simulator detect subtler leakage (e.g. model temporal contamination)?
 
 ## Z. Product & roadmap
 
@@ -310,7 +310,7 @@ Resolved in a design pass and written into the specs.
 |---|---|---|---|
 | **Q-PROD-1** MVP engine scope | Determines build target | OD-1 | ✅ Resolved — end-state, no MVP (ADR-0009) |
 | **Q-RUNREQ-1** Run Request schema | "Pass a strategy in at runtime" was undefined | OD-8 | ✅ Resolved — `run-request.md` |
-| **Q-ACCT-1** Portfolio/ledger ownership | Decides if the suite is stateful per run | — | ✅ Resolved — injected `Account` (ADR-0010) |
+| **Q-ACCT-1** Portfolio/ledger ownership | Decides if the simulator is stateful per run | — | ✅ Resolved — injected `Account` (ADR-0010) |
 | **Q-REG-1** Component registry trust model | Gates how strategies are extended | OD-7 | ✅ Resolved — tiered + WASM (ADR-0011) |
 | **Q-REPO-1** Shared contracts topology | Shapes how training package & platform consume contracts | OD-11 | ✅ Resolved — standalone kernel (ADR-0012) |
 | **Q-PROD-2** First vertical slice | Sequenced into the forthcoming phased plan | — | ⏳ Deferred to planning |

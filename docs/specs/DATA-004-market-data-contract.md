@@ -7,7 +7,7 @@
 **Author:** Agent
 
 The Market Data Contract defines the shape of every data event the caller feeds into the
-suite. It has two layers:
+simulator. It has two layers:
 1. A **required envelope** — small, always present, shared by every event.
 2. A **typed payload** — one variant per event type; which variants are valid is gated by
    the instrument's capability flags.
@@ -737,7 +737,7 @@ of `bidder_id`. The engine does not simulate autobid increment strategies.
 
 ## 3. Data manifest validation
 
-At run start, before any events are processed, the suite validates the caller's declared
+At run start, before any events are processed, the simulator validates the caller's declared
 data feeds against the required manifest for each `(instrument, engine)` pair.
 
 ```

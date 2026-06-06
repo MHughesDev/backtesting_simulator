@@ -6,7 +6,7 @@
 **Date:** 2026-06-06
 **Author:** Agent
 
-An **AI endpoint** is an AI/ML inference dependency that a strategy calls. The suite **does
+An **AI endpoint** is an AI/ML inference dependency that a strategy calls. The simulator **does
 not own, store, or train** endpoints — it invokes them through this contract. Endpoints are
 referenced from a strategy's `ai_endpoints` block (see [strategy.md](DATA-006-strategy-contract.md) §8) and
 resolved at runtime by the caller (the trading platform).
@@ -28,9 +28,9 @@ See [ADR-0006](../adr/0006-model-inference-and-training.md).
 
 1. **Inference-by-default.** Endpoints arrive ready to use. The normal path is: load → infer.
 2. **One interface, all endpoint types.** Whether the endpoint is a single model, an agent
-   runtime, or a multi-step pipeline, the suite calls the same `infer()` method. The
+   runtime, or a multi-step pipeline, the simulator calls the same `infer()` method. The
    distinction is the `endpoint_type` field (informational) and the `scope` field (safety).
-3. **The suite owns no weights and runs no agents.** It receives a resolvable handle
+3. **The simulator owns no weights and runs no agents.** It receives a resolvable handle
    (`endpoint_id` + `version`), not model files or agent code. Where the implementation lives
    is the platform's concern.
 4. **Point-in-time and deterministic.** Inference sees only `ts_event ≤ current_ts` data, runs
@@ -40,7 +40,7 @@ See [ADR-0006](../adr/0006-model-inference-and-training.md).
 
 ## 2. The interface
 
-The suite drives any endpoint that satisfies this interface (Rust trait shown; the Python SDK
+The simulator drives any endpoint that satisfies this interface (Rust trait shown; the Python SDK
 and remote adapters mirror it):
 
 ```rust
@@ -79,7 +79,7 @@ struct ContextBundle {
 }
 
 /// One exogenous item. Numeric/categorical features arrive resolved; raw media/text arrives
-/// as a reference (URI + modality) that the ENDPOINT — not the suite — loads and decodes.
+/// as a reference (URI + modality) that the ENDPOINT — not the simulator — loads and decodes.
 enum ExogenousItem {
     Signal   { value: Value, ts_available: i64 },
     Document { features: Map<String, Value>, uri: Option<String>, ts_available: i64 },
@@ -156,7 +156,7 @@ returns and the next historical market event is processed.
 ## 6. Scope
 
 The `scope` field declares what an endpoint may access when `infer()` is called. It is
-**validated at run start** and enforced by the suite.
+**validated at run start** and enforced by the simulator.
 
 | `scope` | What the endpoint may access | Backtest |
 |---|---|---|
@@ -171,7 +171,7 @@ any data is processed.
 
 `archived_tools_only` is for agent runtimes or pipelines that use a tool-calling interface to
 access historical data. The caller is responsible for ensuring the archive respects
-`ts_available` — the suite enforces look-ahead only on the `FeatureFrame` and `ContextBundle`
+`ts_available` — the simulator enforces look-ahead only on the `FeatureFrame` and `ContextBundle`
 it assembles; it cannot enforce it on data a caller-managed tool returns.
 
 ---
@@ -195,7 +195,7 @@ fallback makes the choice explicit and recorded in results.
 
 ## 8. Adapters (caller-side, illustrative)
 
-The platform implements `AIEndpoint` over whatever runtime it uses. The suite ships interface
+The platform implements `AIEndpoint` over whatever runtime it uses. The simulator ships interface
 definitions, not runtimes. Any adapter that satisfies the trait can be wired in:
 
 | Adapter | Use |
@@ -222,7 +222,7 @@ A backtest using AI endpoints is reproducible only if all hold:
 - For `archived_tools_only` endpoints, the caller-managed archive is itself point-in-time
   correct.
 
-The suite enforces PIT on its own data surfaces (`FeatureFrame`, `ContextBundle`) and threading
+The simulator enforces PIT on its own data surfaces (`FeatureFrame`, `ContextBundle`) and threading
 determinism; **weight/code/version stability is the platform's responsibility** (see open
 questions in [strategy.md](DATA-006-strategy-contract.md) §16).
 
@@ -236,9 +236,9 @@ scores a listing off its description and photos, or weighs a stock on the headli
 that hour. The strategy declares this with `context_inputs` (see [strategy.md](DATA-006-strategy-contract.md)
 §8.2); the engine assembles a `ContextBundle` per inference call and passes it to `infer()`.
 
-The division of labor is deliberate and preserves "the suite owns no data and no endpoints":
+The division of labor is deliberate and preserves "the simulator owns no data and no endpoints":
 
-- **The suite** collects, per `context_inputs` entry, every exogenous record with
+- **The simulator** collects, per `context_inputs` entry, every exogenous record with
   `ts_available ≤ current_ts` inside the declared `lookback` window (capped by `max_items`),
   orders it deterministically by `(ts_available, source_id, seq)`, and hands it over as the
   `ContextBundle`. It never decodes media.

@@ -6,7 +6,7 @@
 **Date:** 2026-06-06
 **Author:** Agent
 
-This is the master reference for **every kind of data the suite can ingest**, organized into the
+This is the master reference for **every kind of data the simulator can ingest**, organized into the
 three planes that govern how the data behaves. It unifies the market-data contract, the exogenous
 signal contract, and the operational/audit records into one map.
 
@@ -18,15 +18,15 @@ without ever confusing it with the market data the engine fills against.
 
 ---
 
-## 1. The governing principle: the suite is venue-neutral
+## 1. The governing principle: the simulator is venue-neutral
 
-**The core suite recognizes generic, normalized payload types — never venue-specific feed
+**The core simulator recognizes generic, normalized payload types — never venue-specific feed
 names.** It does not know what "L2 depth from exchange X" or "social firehose from platform Y" is.
-A caller-owned **adapter** translates every vendor/source feed into the suite's normalized
-payloads before the suite sees it:
+A caller-owned **adapter** translates every vendor/source feed into the simulator's normalized
+payloads before the simulator sees it:
 
 ```
-vendor/source feed  →  caller-owned adapter/parser  →  normalized payload  →  suite
+vendor/source feed  →  caller-owned adapter/parser  →  normalized payload  →  simulator
 ```
 
 | Bad (vendor dialect) | Good (normalized) |
@@ -36,7 +36,7 @@ vendor/source feed  →  caller-owned adapter/parser  →  normalized payload  �
 | "search-trends raw response" | `SignalEvent { signal_id: "search_attention", value, ts_event, ts_available }` |
 | "social firehose post" | `DocumentSignal` / `MediaReference` (PIT, see §4) |
 
-**The suite understands market mechanics, not vendor dialects.** This is what keeps it universal:
+**The simulator understands market mechanics, not vendor dialects.** This is what keeps it universal:
 adapters absorb the chaos of real feeds; the core stays small and typed.
 
 ---
@@ -49,7 +49,7 @@ Every data type belongs to exactly one plane, and the plane decides the rules.
 |---|---|---|---|---|
 | **Market-Data Plane** | Prices, books, pool state, the mechanics an engine simulates fills against | **Yes** | `ts_event` | Caller (bound per instrument) |
 | **Exogenous-Signal Plane** | Everything *outside* the market that informs a decision — news, sentiment, fundamentals, macro, on-chain analytics, media | **Never** | `ts_available` | Caller (bound per source) |
-| **Operational / Meta Plane** | Records the suite *emits* about its own run — lineage, warnings, decisions, audit | n/a (output) | n/a | Suite |
+| **Operational / Meta Plane** | Records the simulator *emits* about its own run — lineage, warnings, decisions, audit | n/a (output) | n/a | Simulator |
 
 The single most important consequence: **exogenous data never sets a fill price.** It can change
 what the strategy *decides*, never what the market *does*. A news event can make the strategy buy;
@@ -68,9 +68,9 @@ Plane needs a **second timestamp** because external information has a publicatio
 **Look-ahead enforcement on the Exogenous-Signal Plane uses `ts_available`, not `ts_event`.** A
 merger effective on date Y but announced on date X (X < Y) becomes actionable at X. A filing dated
 to a quarter-end but published weeks later becomes visible only at publication. Without
-`ts_available`, every external dataset is a look-ahead trap. The suite enforces
+`ts_available`, every external dataset is a look-ahead trap. The simulator enforces
 `ts_available ≤ current_ts` for all exogenous data; honesty of the timestamps themselves is the
-caller's contractual responsibility (the suite cannot know a feed lied about when news broke).
+caller's contractual responsibility (the simulator cannot know a feed lied about when news broke).
 
 ---
 
@@ -109,7 +109,7 @@ specified in [contracts/market-data.md](DATA-004-market-data-contract.md); this 
 | 4 | Calendar / session / status | `TradingSession`, `TradingStatus`, `MarketPhase`, `LimitState`, exchange calendar (reference) | A |
 | 5 | Instrument reference / security-master | `InstrumentStatic`, `SymbolMapping`, `InstrumentLifecycle`, `ContractSpec`, `TickLotSpec`, `SettlementSpec` | all (reference) |
 | 6 | Fees / costs / frictions | `FeeSchedule`, `FeeScheduleUpdate`, `BorrowRate`, `Funding`, `SwapRate`, `GasEvent`, `ExpenseRatio`, `MarketplaceFee`, `RoyaltyFee`, `RepoRate` | all |
-| 7 | Order / fill / execution | `OrderRequest`, `OrderState`, `Fill`, `PartialFill`, `ExecutionReport`, `LatencyEvent`, `TradeRecord` | all (suite-emitted) |
+| 7 | Order / fill / execution | `OrderRequest`, `OrderState`, `Fill`, `PartialFill`, `ExecutionReport`, `LatencyEvent`, `TradeRecord` | all (simulator-emitted) |
 | 8 | Account / portfolio / ledger | `AccountSnapshot`, `PositionSnapshot`, `MarginState`, `CollateralState` | injected `Account` |
 | 9 | Risk state | `LiquidationEvent`, `InsuranceFundEvent`, `AutoDeleveragingEvent`, `VolatilityEstimate` | A, E + risk stage |
 | 10 | Corporate / lifecycle | `CorporateAction` (Dividend/Split/Merger/SpinOff/RightsIssue/Delisting), `UniverseMembership` | A |
@@ -133,7 +133,7 @@ strategy's `features` and `models` stages; **they are never a fill source.** Ful
 [contracts/signals.md](DATA-005-signals-contract.md); this is the index.
 
 Everything here normalizes onto a small set of generic payloads (`SignalEvent`, `ExternalEvent`,
-`DocumentSignal`, `MediaReference`, `EntityMetric`, `ScheduledEvent`) — the suite never adds a
+`DocumentSignal`, `MediaReference`, `EntityMetric`, `ScheduledEvent`) — the simulator never adds a
 distinct payload type per data vendor or per category. The categories below are *what kinds of
 real-world data map onto those generic payloads*, not 12 separate schemas.
 
@@ -154,7 +154,7 @@ real-world data map onto those generic payloads*, not 12 separate schemas.
 
 ### 5.1 Raw media and documents — references, not blobs
 
-The suite still does **not parse or own raw media.** But the architecture must let a model run
+The simulator still does **not parse or own raw media.** But the architecture must let a model run
 inference on the actual post/image/video/news that existed at time *t* (critical for meme coins,
 NFTs, and event-driven names). The reconciliation:
 
@@ -162,17 +162,17 @@ NFTs, and event-driven names). The reconciliation:
   point-in-time *pointer* to the raw asset — its URI, modality (text/image/video/audio), and
   `ts_available` — optionally alongside pre-extracted features.
 - The **injected `Model` port (caller code) resolves the reference and loads the raw bytes** for
-  inference. The suite guarantees only point-in-time correctness and routing; the caller's model
+  inference. The simulator guarantees only point-in-time correctness and routing; the caller's model
   does the multimodal heavy lifting.
 
-This preserves "the suite owns no data and no models" while enabling true multimodal,
+This preserves "the simulator owns no data and no models" while enabling true multimodal,
 point-in-time inference. See [contracts/signals.md](DATA-005-signals-contract.md) §4–§5.
 
 ---
 
 ## 6. The Operational / Meta Plane (category 33)
 
-Records the suite **emits** about its own execution — never ingested, always output. They make a
+Records the simulator **emits** about its own execution — never ingested, always output. They make a
 run debuggable, reproducible, and auditable.
 
 `RunConfig`, `RunWarning`, `ValidationError`, `ManifestViolation`, `DataSufficiencyError`,
@@ -185,7 +185,7 @@ These are governed by [run-request.md](DATA-002-run-request.md) §7 (output) and
 
 ## 7. Classification axes (how to reason about any data type)
 
-Any payload can be placed on four axes; this is the mental model for deciding how the suite treats
+Any payload can be placed on four axes; this is the mental model for deciding how the simulator treats
 it:
 
 1. **Plane** — Market-Data / Exogenous-Signal / Operational (§2).
@@ -193,7 +193,7 @@ it:
    external = produced outside it (a tweet, a CPI print).
 3. **Direct vs. indirect** — direct = acts on price/fills (a quote, a funding rate); indirect =
    informs a decision but never a fill (sentiment, a satellite image).
-4. **Provided vs. derived** — provided = bound by the caller; derived = computed by the suite from
+4. **Provided vs. derived** — provided = bound by the caller; derived = computed by the simulator from
    provided data (a `DerivedBar` from ticks, greeks from an IV surface, duration from cash flows).
    Caller-provided always wins; derived is the fallback and is always flagged
    ([run-request.md](DATA-002-run-request.md) §4).
@@ -205,16 +205,16 @@ two-clock model (`ts_event` / `ts_available`) exists to handle.
 
 ---
 
-## 8. What the suite derives vs. requires (per plane)
+## 8. What the simulator derives vs. requires (per plane)
 
-- **Market-Data Plane:** the suite derives coarser bars from finer data, adjusted series from
+- **Market-Data Plane:** the simulator derives coarser bars from finer data, adjusted series from
   unadjusted + corporate actions, greeks from an IV surface, NAV from holdings, duration/convexity
   from cash flows — all flagged `derived`. It requires a per-engine minimum (see
   [run-request.md](DATA-002-run-request.md) §10) and fails loud (`DataSufficiencyError`) otherwise.
-- **Exogenous-Signal Plane:** the suite derives **nothing** here by default — exogenous data is
+- **Exogenous-Signal Plane:** the simulator derives **nothing** here by default — exogenous data is
   pre-computed upstream by the caller. It only aligns, windows, and routes it point-in-time (by
   `ts_available`). A strategy that references a signal not bound for any source fails validation.
-- **Operational Plane:** entirely suite-produced.
+- **Operational Plane:** entirely simulator-produced.
 
 ---
 

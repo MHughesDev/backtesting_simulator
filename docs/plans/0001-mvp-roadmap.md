@@ -23,7 +23,7 @@ highest-volume engines deep first.* (Recommended; to be confirmed and recorded i
 - [x] Capability-based instrument model (ADR-0003)
 - [x] Master spec skeleton
 - [ ] Confirm MVP engine scope → new ADR
-- [ ] Confirm run-queue boundary (suite vs. platform) → new ADR
+- [ ] Confirm run-queue boundary (simulator vs. platform) → new ADR
 - [ ] Resolve strategy-authoring form (callbacks vs. graph/DSL) → new ADR
 
 ## Phase 1 — Contract spine (Rust)

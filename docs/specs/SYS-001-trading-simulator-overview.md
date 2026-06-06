@@ -1,4 +1,4 @@
-# Spec: SYS-001 — Backtesting Simulator Overview
+# Spec: SYS-001 — Trading Simulator Overview
 
 **Spec ID:** SYS-001
 **Type:** System-overview (master specification routing to individual specs)
@@ -85,7 +85,7 @@ Caller (trading platform or any tool)
   │
   ▼
 ┌─────────────────────────────────────────────────────────┐
-│  backtesting_simulator                                  │
+│  trading_simulator                                  │
 │                                                         │
 │  Contract Validator                                     │
 │    ├─ Validates instrument definitions                  │
@@ -134,7 +134,7 @@ Economic Primitive  →  Venue Mechanics  →  Execution Engine
 
 ## 4. Asset taxonomy
 
-The suite covers eleven asset classes (the full end-state set — there is no MVP subset, see
+The simulator covers eleven asset classes (the full end-state set — there is no MVP subset, see
 [ADR-0009](../adr/0009-end-state-system-no-mvp.md)). Each is defined in full in its own spec —
 covering: what the asset is, what a backtest of it requires, the full data contract, which
 engine handles it, and the implications for system design.
@@ -159,7 +159,7 @@ Assets taxonomy overview: [assets/README.md](README.md)
 
 ## 5. The contracts
 
-The system's public interface. The caller satisfies the input contracts; the suite supplies
+The system's public interface. The caller satisfies the input contracts; the simulator supplies
 outputs. Detailed specifications live in `specs/contracts/` and the top-level specs
 [run-request.md](DATA-002-run-request.md), [component-registry.md](COMP-001-component-registry.md),
 [DATA_TAXONOMY.md](DATA-001-data-taxonomy.md), and [ENGINE_DEEP_DIVE.md](../reference/ENGINE_DEEP_DIVE.md).
@@ -173,14 +173,14 @@ outputs. Detailed specifications live in `specs/contracts/` and the top-level sp
 | **Plan** | Multi-strategy composition: screen→entry→exit by data-flow, or concurrent independents; `account_mode` (shared/isolated), `conflict_policy` (net/priority/reject) | [contracts/plan.md](DATA-007-plan-contract.md) | ✅ Defined |
 | **Model** (port) | AI/ML inference interface; look-ahead safety; injected; multimodal context bundles from signals | [contracts/model.md](INTG-002-ai-model-inference-port.md) | ✅ Defined |
 | **Training** (`Trainer` port) | Opt-in PIT (re)training; pause-train-resume; walk-forward + refit cache; injected | [contracts/training.md](INTG-003-training-port.md) | ✅ Defined |
-| **Account** (port) | Caller-owned ledger the suite queries; **no assumed portfolio** | [run-request.md](DATA-002-run-request.md) §5 | ✅ Defined |
+| **Account** (port) | Caller-owned ledger the simulator queries; **no assumed portfolio** | [run-request.md](DATA-002-run-request.md) §5 | ✅ Defined |
 | **Run Request** | Per-invocation binding of data (event streams + reference data), time, parameters, ports, output; data manifest validation | [run-request.md](DATA-002-run-request.md) | ✅ Defined |
 | **Component Registry** | Built-in / native / WASM components strategies wire together; trust tiers (Rust / trusted native / WASM sandbox) | [component-registry.md](COMP-001-component-registry.md) | ✅ Defined |
 | **Result / Metrics** | Per-trade `TradeRecord` stream; aggregate metrics (returns, Sharpe, drawdown, greeks attribution, etc.); injected `Account` for ledger | [contracts/metrics.md](DATA-008-result-metrics-contract.md) | 🔲 Deferred |
 
 Data is organized into **three planes** — the Market-Data Plane (what engines fill against), the
 Exogenous-Signal Plane (news/social/macro/media that inform decisions but never set a fill price,
-governed by a `ts_available` clock), and the Operational/Meta Plane (records the suite emits). The
+governed by a `ts_available` clock), and the Operational/Meta Plane (records the simulator emits). The
 complete venue-neutral data model is in [DATA_TAXONOMY.md](DATA-001-data-taxonomy.md).
 
 **Event streams vs. reference data:** Bindings carry a `binding_type` field. Event streams replay
@@ -243,7 +243,7 @@ Engines overview and selection rules: [engines/README.md](README.md)
   bulk-computed over the full dataset before replay; the engine then drives fills event-by-event.
   This gives both speed and fill realism.
 - **Run queue.** Submitting N backtests (parameter sweeps, multi-asset portfolios) is a
-  first-class concern of the suite. Parallelism is GIL-free Rust. The trading platform may
+  first-class concern of the simulator. Parallelism is GIL-free Rust. The trading platform may
   add higher-level orchestration above it, but the primitive lives here.
 
 Full spec: [run-request.md](DATA-002-run-request.md) (the per-invocation document) and `runner.md` *(TBD)*
@@ -252,30 +252,30 @@ Full spec: [run-request.md](DATA-002-run-request.md) (the per-invocation documen
 
 ## 8. Integration boundary
 
-The suite is a **library**: it processes strategies passed in at runtime and **stores
+The simulator is a **library**: it processes strategies passed in at runtime and **stores
 nothing** — not strategies, users, data, or models (see
-[ADR-0005](../adr/0005-strategy-not-stored-suite-is-a-library.md)). The trading platform owns
-all product state and a live engine that honors the *same* order/execution semantics the suite
+[ADR-0005](../adr/0005-strategy-not-stored-simulator-is-a-library.md)). The trading platform owns
+all product state and a live engine that honors the *same* order/execution semantics the simulator
 simulates, so a strategy behaves identically in backtest and live.
 
 | Concern | Owner |
 |---|---|
 | Historical market data | **Caller** |
 | AI model weights & training **algorithms** (the `Trainer` impl, injected) | **Caller** |
-| *When* to retrain + assembling point-in-time training data + pause-train-resume | **Suite** |
+| *When* to retrain + assembling point-in-time training data + pause-train-resume | **Simulator** |
 | Any non-backtest (e.g. live) training orchestration | **Caller** (out of scope here) |
 | Training method *implementation* (named by id in the strategy, resolved by the injected `Trainer`) | **Caller** |
 | Strategy storage, versioning, user selection | **Caller** |
 | Portfolio / cash-position ledger / accounting (injected `Account` port) | **Caller** |
 | Portfolio-level metrics aggregation | **Caller / optional analytics layer** |
-| Live trading / order execution (parity with suite) | **Caller** |
+| Live trading / order execution (parity with simulator) | **Caller** |
 | Job orchestration, UI | **Caller** |
-| Strategy JSON format & validation | **Suite** |
-| Instrument & market-data contracts | **Suite** |
-| Engines, fills, valuation | **Suite** |
-| Strategy & model *interfaces* (not their content) | **Suite** |
-| Run queue primitive | **Suite** |
-| Data manifest validation and error reporting | **Suite** |
+| Strategy JSON format & validation | **Simulator** |
+| Instrument & market-data contracts | **Simulator** |
+| Engines, fills, valuation | **Simulator** |
+| Strategy & model *interfaces* (not their content) | **Simulator** |
+| Run queue primitive | **Simulator** |
+| Data manifest validation and error reporting | **Simulator** |
 
 ---
 
@@ -306,9 +306,9 @@ and `MediaReference` multimodal model bundles. These are fully specified in [DAT
 | # | Decision | Where it blocks | Status |
 |---|---|---|---|
 | ~~OD-1~~ | ~~MVP engine scope~~ | [ADR-0009](../adr/0009-end-state-system-no-mvp.md) | ✅ Resolved |
-| OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `specs/runner.md` | ⏳ Deferred to phase planning |
+| OD-2 | Run-queue boundary: how much orchestration lives in simulator vs. platform | `specs/runner.md` | ⏳ Deferred to phase planning |
 | ~~OD-8~~ | ~~Run Request schema~~ | [run-request.md](DATA-002-run-request.md) | ✅ Resolved |
-| ~~Q-ACCT-1~~ | ~~Does the suite own the portfolio ledger?~~ | [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md) | ✅ Resolved |
+| ~~Q-ACCT-1~~ | ~~Does the simulator own the portfolio ledger?~~ | [ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md) | ✅ Resolved |
 | OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | Perf/implementation | ⏳ Deferred to build phase |
 | OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | [engine-e-derivatives.md](COMP-007-engine-e-derivatives.md) | ⏳ Deferred to build phase |
 | ~~OD-5~~ | ~~Strategy-authoring form~~ | [ADR-0004](../adr/0004-strategy-json-pipeline.md) | ✅ Resolved |
@@ -341,19 +341,19 @@ and `MediaReference` multimodal model bundles. These are fully specified in [DAT
 | **Component registry** | The store of named, typed, reusable code components (indicators, alpha/sizing functions, selectors) that strategy JSON references by ID |
 | **Run Request** | The per-invocation document (separate from Strategy JSON) binding data, dates, capital, seeds, and parameter values/sweeps |
 | **Walk-forward** | Refitting a model on a rolling point-in-time window so no future data leaks into training |
-| **Trainer (port)** | The injected interface the suite calls to (re)train a model; implemented by the shared training package, never by the suite |
-| **Model artifact** | The versioned output of a training run (a registry handle); the suite stores no weights |
+| **Trainer (port)** | The injected interface the simulator calls to (re)train a model; implemented by the shared training package, never by the simulator |
+| **Model artifact** | The versioned output of a training run (a registry handle); the simulator stores no weights |
 | **Refit cache** | Cache keyed by `(base_version, method, data_window, params, seed)` so identical training is done once across refits and sweeps |
 | **Hot-swap** | Replacing the active model version with a newly trained one (atomic at sim time in backtest; async in live) |
 | **Pause-train-resume** | Backtest mechanic: freeze the sim clock at a refit point, train on PIT data, swap the model, resume |
 | **Parity** | The guarantee that a strategy behaves identically in backtest and live, differing only in data feed |
-| **Per-trade model** | The suite simulates each trade decision and emits a TradeRecord; it owns no portfolio |
-| **TradeRecord** | The suite's per-decision output: trade setup + sizing decision + execution information |
-| **Account (port)** | Injected, caller-owned ledger the suite queries for equity/positions/collateral and reports fills to |
+| **Per-trade model** | The simulator simulates each trade decision and emits a TradeRecord; it owns no portfolio |
+| **TradeRecord** | The simulator's per-decision output: trade setup + sizing decision + execution information |
+| **Account (port)** | Injected, caller-owned ledger the simulator queries for equity/positions/collateral and reports fills to |
 | **Component** | A named, reusable building block (indicator, sizer, selector, …) that fills one pipeline slot; strategies wire components, they don't contain logic |
 | **Component registry** | The set of available components, in tiers: built-in (Rust), trusted native, and sandboxed WASM |
 | **WASM sandbox** | A sealed WebAssembly runtime that runs untrusted/AI components with no I/O, clock, or network — enforcing purity and look-ahead safety by construction |
-| **Shared kernel (contracts)** | The standalone, dependency-free package of cross-boundary types/ports that the suite, training package, and live platform all depend on |
+| **Shared kernel (contracts)** | The standalone, dependency-free package of cross-boundary types/ports that the simulator, training package, and live platform all depend on |
 | **Clean price** | Bond quoted price excluding accrued coupon interest |
 | **Dirty price** | Bond actual purchase price = clean price + accrued interest |
 | **Roll yield** | Gain or loss from rolling an expiring futures contract; positive in backwardation, negative in contango |
@@ -364,10 +364,10 @@ and `MediaReference` multimodal model bundles. These are fully specified in [DAT
 | **`ts_recv`** | When the system received an event; used for latency modeling; `≥ ts_event` |
 | **Market-Data Plane** | Prices/books/pool-state/funding the engine simulates fills against; governed by `ts_event`; the only data that can set a fill price |
 | **Exogenous-Signal Plane** | External information (news, social, fundamentals, macro, on-chain analytics, media) that informs decisions but **never** sets a fill price; governed by `ts_available` |
-| **Operational / Meta Plane** | Records the suite emits about its own run (lineage, warnings, decisions, audit) |
-| **Venue-neutral** | The suite recognizes generic normalized payloads, never vendor feed dialects; caller-owned **adapters** translate vendor feeds into the contracts |
+| **Operational / Meta Plane** | Records the simulator emits about its own run (lineage, warnings, decisions, audit) |
+| **Venue-neutral** | The simulator recognizes generic normalized payloads, never vendor feed dialects; caller-owned **adapters** translate vendor feeds into the contracts |
 | **Signal** | A pre-computed exogenous value (`SignalEvent`/`EntityMetric`) referenced by the strategy via `signal:<id>` |
-| **MediaReference** | A point-in-time *pointer* (URI + modality) to raw text/image/video; the suite never decodes it — the injected `Model` port loads it for multimodal inference |
+| **MediaReference** | A point-in-time *pointer* (URI + modality) to raw text/image/video; the simulator never decodes it — the injected `Model` port loads it for multimodal inference |
 | **ContextBundle** | The PIT collection of exogenous items assembled per inference call from a model node's `context_inputs` |
 | **DerivedBar** | A bar the engine builds inline from finer data (trade prints, fallback quote-mid); flagged `derived` with `source_class`; callers never supply it |
 | **Reference data** | A binding loaded once and *queried by timestamp* (not replayed as clock events) — e.g. `UniverseMembership`, roll schedules, calendars; carries `effective_ts` + `knowable_ts` |
@@ -382,7 +382,7 @@ and `MediaReference` multimodal model bundles. These are fully specified in [DAT
 | **Event stream** | A time-series binding replayed through the clock in `ts_event` order (market data, signals, corporate actions); distinguished from reference data |
 | **Reference data** | A binding loaded once and queried point-in-time by `effective_ts` + `knowable_ts` (e.g., credit spreads, exchange calendars, roll schedules); never replayed as events |
 | **DerivedBar** | A bar engine constructs inline from finer data (trade prints or fallback quote-mid); flagged `derived: true` + `source_class`; caller never supplies it |
-| **MediaReference** | A point-in-time pointer (URI + modality: text/image/video) to raw media; suite never decodes it — injected `Model` port loads it for multimodal inference |
+| **MediaReference** | A point-in-time pointer (URI + modality: text/image/video) to raw media; simulator never decodes it — injected `Model` port loads it for multimodal inference |
 | **ContextBundle** | The point-in-time collection of exogenous items assembled per inference call from a model node's `context_inputs` (signals, media references, cross-instrument data) |
 | **Cohort** | A large, membership-changing universe bound as a single market-wide data source that materializes instruments point-in-time as they appear (DEX pairs, NFT collections, new listings) |
 | **Scanner** | A `universe.type` that screens a cohort by point-in-time market-data + signal filters; engine-agnostic; selects candidates, does not by itself decide entries |
