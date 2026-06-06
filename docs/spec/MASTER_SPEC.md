@@ -1,6 +1,7 @@
 # Master Specification
 
-**Status:** Living document — sections expand as sub-specs are written.
+**Type:** Architecture Overview (routes to individual specs)  
+**Status:** Living document — sections expand as sub-specs are written.  
 **Role:** The north-star overview. Every significant detail lives in a linked sub-spec;
 this file states the principles once and routes you to the right place.
 

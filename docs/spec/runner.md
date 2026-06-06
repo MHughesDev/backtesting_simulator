@@ -1,5 +1,6 @@
 # Spec: Runner & Run Queue
 
+**Type:** Component (internal run scheduler & executor)  
 **Status:** 🔲 Deferred — to be authored during its implementation phase. The architectural
 frame below is fixed; this file will be expanded into the full spec.
 

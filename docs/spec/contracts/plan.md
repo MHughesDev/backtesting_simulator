@@ -1,5 +1,8 @@
 # Contract Spec: Plan (multi-strategy composition)
 
+**Type:** Data (JSON schema contract for strategy composition)  
+**Status:** ✅ Defined  
+
 A **Plan** is the layer above a Strategy. A Strategy is one flat pipeline
 (universe → features → models → alpha → sizing → risk → execution). A Plan holds **multiple
 strategies and the wiring between them**. The Run Request binds *a Plan*; a single Strategy is the

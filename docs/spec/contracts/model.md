@@ -1,4 +1,7 @@
-# Contract Spec: AI Endpoint
+# Contract Spec: AI Endpoint (Model Port)
+
+**Type:** Integration (external AI/ML inference dependency)  
+**Status:** ✅ Defined  
 
 An **AI endpoint** is an AI/ML inference dependency that a strategy calls. The suite **does
 not own, store, or train** endpoints — it invokes them through this contract. Endpoints are
