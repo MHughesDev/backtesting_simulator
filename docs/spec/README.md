@@ -13,6 +13,8 @@ readiness check**.
 | Spec | Status | Purpose |
 |---|---|---|
 | [MASTER_SPEC.md](MASTER_SPEC.md) | ✅ Defined | North-star: principles, system map, contracts, engines, boundaries |
+| [DATA_TAXONOMY.md](DATA_TAXONOMY.md) | ✅ Defined | The complete venue-neutral data model; the three data planes |
+| [ENGINE_DEEP_DIVE.md](ENGINE_DEEP_DIVE.md) | ✅ Defined | Full per-engine engineering reference + Run Request line-by-line |
 | [run-request.md](run-request.md) | ✅ Defined | Per-invocation document; per-trade model; injected ports |
 | [component-registry.md](component-registry.md) | ✅ Defined | What a component is; trust tiers (built-in / native / WASM) |
 
@@ -21,11 +23,12 @@ readiness check**.
 |---|---|---|
 | [contracts/instrument.md](contracts/instrument.md) | ✅ Defined | Identity, `price_formation` router, capability flags |
 | [contracts/market-data.md](contracts/market-data.md) | ✅ Defined | Event envelope + all payload variants |
-| [contracts/strategy.md](contracts/strategy.md) | ✅ Defined | JSON declarative pipeline; sizing; AI inference block |
+| [contracts/strategy.md](contracts/strategy.md) | ✅ Defined | JSON declarative pipeline; cross-instrument refs; watch-vs-trade; scanner universe; AI inference |
+| [contracts/plan.md](contracts/plan.md) | ✅ Defined | Multi-strategy composition: screen→entry→exit, concurrent strategies, account/conflict modes |
 | [contracts/model.md](contracts/model.md) | ✅ Defined | `Model` inference port; fallback; frequency |
 | [contracts/training.md](contracts/training.md) | ✅ Defined | `Trainer` port; pause-train-resume; visibility; retention |
 | [contracts/metrics.md](contracts/metrics.md) | 🔲 Deferred | Result/metrics analytics over TradeRecords + injected `Account` |
-| [contracts/signals.md](contracts/signals.md) | 🔲 Deferred | Exogenous / alternative-data signal streams |
+| [contracts/signals.md](contracts/signals.md) | ✅ Defined | Exogenous-Signal Plane: news/social/macro/media, `ts_available`, multi-source binding, multimodal model bundles |
 
 ### Assets (`assets/`) — all ✅ Defined
 [equities](assets/equities.md) · [etfs](assets/etfs.md) ·
@@ -94,6 +97,13 @@ is made and recorded:
   training (incl. the injected `Trainer` and pause-train-resume).
 - ✅ The per-trade execution model and the injected `Account` port (no assumed portfolio).
 - ✅ The Run Request (how a run is invoked) and the component registry + trust tiers.
+- ✅ The three-plane data model (Market-Data, Exogenous-Signal, Operational) — see
+  [DATA_TAXONOMY.md](DATA_TAXONOMY.md) — with the `ts_available` look-ahead clock for exogenous
+  data and reference-based multimodal model inputs ([contracts/signals.md](contracts/signals.md)).
+- ✅ Strategy topologies: single/multi-asset with cross-instrument references and watch-vs-trade,
+  and universe-wide **scanner** strategies over **cohort** data sources.
+- ✅ Multi-strategy composition via the **Plan** (screen→entry→exit by data-flow; concurrent
+  strategies; `account_mode`/`conflict_policy`) — [contracts/plan.md](contracts/plan.md).
 - ✅ Reproducibility/determinism and look-ahead invariants stated system-wide.
 
 **All eight engines are now fully specified** — matching/fill models (A), pool math v2/v3/Curve
@@ -101,8 +111,8 @@ is made and recorded:
 pricing/greeks/exercise (E), custom-payoff/barriers/financing (F), marketplace listing/sale
 (G), and event-resolution lifecycle (H).
 
-**Remaining work is depth in the contract layer, not the engine layer** — metrics formulas,
-signals, and the runner — each with a fixed architectural frame, becoming tasks inside their
+**Remaining work is depth in the contract layer, not the engine layer** — metrics formulas and
+the runner — each with a fixed architectural frame, becoming tasks inside their
 phases.
 
 **Conclusion: ready to begin implementation planning.** Next: a long-term plan decomposing the

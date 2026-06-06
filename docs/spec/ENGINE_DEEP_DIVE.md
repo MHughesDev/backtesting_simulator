@@ -193,35 +193,81 @@ excluding delisted instruments from a CLOB universe).
 }
 ```
 
+**Minimum data requirements for Engine A:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | Any one of: `Trade`, `Quote`, `BookSnapshot`, `Bar` | `DataSufficiencyError` — run rejected |
+| `HasFunding` set | `Funding` stream | `DataSufficiencyError` |
+| `HasCorporateActions` set | `CorporateAction` stream | `DataSufficiencyError` |
+| `HasBorrowRate` + strategy shorts | `BorrowRate` stream | `DataSufficiencyError` |
+| Strategy uses 1s bars but only 1d bars provided | — | `DataSufficiencyError.non_derivable_conflict` (cannot derive 1s from 1d) |
+| No `Quote`/`BookSnapshot`/`Trade` (bar only) | — | Run proceeds; `degraded_fidelity` warning; bar-fidelity fills |
+
 **Market data payload requirements for Engine A:**
 
 Minimum viable (bar fidelity, weakest realism):
 - `Bar` events with `adjusted: false` for fills
 - `Bar` events with `adjusted: true` for signal computation (equities/futures with rolls)
 
-Upgrades that improve fill realism:
-- `Quote` (BBO) — enables L1 fill model; spread-aware
-- `BookSnapshot` + `BookDelta` — enables L2/L3 fill model; exact book walk
-- `Trade` events — tick prints; support L3 queue reconstruction
+Upgrades that improve fill realism (fidelity ladder):
+- `Trade` events — enables trade-price reference; bar derivation at all intervals ≥ trade frequency
+- `Quote` (BBO) — enables L1 spread-aware fill model
+- `BookSnapshot` + `BookDelta` (`HasOrderBook`) — enables L2 fill model; exact book walk
+- `OrderBookOrderEvent` (`HasL3OrderBook`) — enables true L3/MBO fill model; queue-position reconstruction
 
 Required for capability-gated mechanics:
 - `Funding` + `MarkUpdate` — required when `HasFunding` + `HasMarkPrice` are set
 - `CorporateAction` — required when `HasCorporateActions` is set
 - `TokenEvent` — required when `HasTokenEvents` is set
+- `BorrowRate` — required when `HasBorrowRate` is set and strategy holds short positions
+- `TradingStatus` — required when `HasTradingStatus` is set (halts gate fills)
+- `RollSchedule` (reference data) — required when `HasRollSchedule` is set
+- `OpenInterest` — when `HasOpenInterest` is set (optional; improves metrics)
+- `FeeScheduleUpdate` — optional; overrides static fee schedule when fee schedules change over time
+- `UniverseMembership` (reference data) — when `HasUniverseMembership` is set
 
-**data bindings in the Run Request for a perpetual:**
+**data bindings in the Run Request for a perpetual (descriptor format):**
 
 ```jsonc
 "data": {
   "reader": "arrow_ipc",
   "bindings": {
     "BTC-USD-PERP@binance.perp": {
-      "bars":         "path/to/btcusd_perp_1m.arrow",
-      "trades":       "path/to/btcusd_perp_trades.arrow",
-      "funding":      "path/to/btcusd_funding.arrow",
-      "mark_updates": "path/to/btcusd_mark.arrow"
+      "bars_1m": {
+        "uri":           "path/to/btcusd_perp_1m.arrow",
+        "payload_class": "Bar",
+        "interval":      "1m",
+        "adjusted":      false
+      },
+      "trades": {
+        "uri":           "path/to/btcusd_perp_trades.arrow",
+        "payload_class": "Trade"
+      },
+      "funding": {
+        "uri":           "path/to/btcusd_funding.arrow",
+        "payload_class": "Funding"
+      },
+      "mark_updates": {
+        "uri":           "path/to/btcusd_mark.arrow",
+        "payload_class": "MarkUpdate"
+      }
     }
   }
+}
+```
+
+**DataSufficiencyError example — strategy needs 1s bars but only daily bars are provided:**
+
+```
+DataSufficiencyError {
+  instrument_id: "AAPL@nasdaq.equity",
+  engine: CLOB,
+  missing_required: [],
+  non_derivable_conflict: [
+    ResolutionConflict { required_interval: "1s", available_interval: "1d" }
+  ],
+  degraded_fidelity: []
 }
 ```
 
@@ -363,6 +409,14 @@ to correctness.
 }
 ```
 
+**Minimum data requirements for Engine B:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | `PoolState` stream | `DataSufficiencyError` — run rejected |
+| `HasGasCost` set | `GasEvent` stream OR static gas in `execution_defaults` | `DataSufficiencyError` |
+| v3 exact fidelity | `tick_data` inside `PoolState` | Run proceeds; `degraded_fidelity` warning; approximate mode |
+
 **Market data payload requirements for Engine B:**
 
 Required:
@@ -372,19 +426,31 @@ Required:
 Optional but strongly recommended:
 - `tick_data` inside `PoolState` for v3 — without it, the engine falls to approximate mode
   and flags results as lower fidelity
+- `SwapEvent` stream (`HasSwapEvent`) — historical AMM transactions; distinct from `PoolState`
+  snapshots; enables intra-snapshot transaction detail modeling
 
-Gas data:
+Gas data (required when `HasGasCost` set):
 - A `GasEvent` stream (gas price per block) OR a static gas price in `execution_defaults`
 
-**data bindings in the Run Request for a v3 pool:**
+**data bindings in the Run Request for a v3 pool (descriptor format):**
 
 ```jsonc
 "data": {
   "reader": "arrow_ipc",
   "bindings": {
     "USDC-ETH-0.3@uniswap_v3.dex": {
-      "pool_states": "path/to/usdc_eth_pool_states.arrow",
-      "gas_events":  "path/to/eth_gas_prices.arrow"
+      "pool_states": {
+        "uri":           "path/to/usdc_eth_pool_states.arrow",
+        "payload_class": "PoolState"
+      },
+      "swap_events": {
+        "uri":           "path/to/usdc_eth_swaps.arrow",
+        "payload_class": "SwapEvent"
+      },
+      "gas_events": {
+        "uri":           "path/to/eth_gas_prices.arrow",
+        "payload_class": "GasEvent"
+      }
     }
   }
 }
@@ -501,26 +567,52 @@ the distinction between iNAV (signal-only) and NAV (fill price) are unique to th
 }
 ```
 
+**Minimum data requirements for Engine C:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | `Nav` stream OR (`HoldingsSnapshot` + underlying price data for all holdings) | `DataSufficiencyError` — run rejected |
+| Holdings-derived NAV | `HoldingsSnapshot` binding + each underlying's price data in the same run | `DataSufficiencyError` if holdings reference an unbound underlying |
+| ETF premium/discount | `Nav` stream alongside Engine A data | `degraded_fidelity` if absent |
+
 **Market data payload requirements for Engine C:**
 
 For mutual funds:
-- `Nav` events (official NAV) — required unless `HasBasket` is set and holdings are provided
-- `Bar` or `Mark` for underlying holdings — required if NAV is to be derived from basket
+- `Nav` events (official NAV) — required unless `HasHoldings` is set and `HoldingsSnapshot` is provided
+- `HoldingsSnapshot` events — required if NAV is to be derived from basket (`HasHoldings` set)
+- `Bar` or `Mark` for each underlying holding — required for holdings-derived NAV
 
 For ETFs (in addition to Engine A's bar/quote/book data):
 - `Nav` events — provides the official NAV for premium/discount computation
+- `HoldingsSnapshot` (`HasHoldings`) — optional; enables derived NAV computation
+- `CreationRedemptionBasket` (`HasCreationRedemption`) — optional; enables authorized-participant basket modeling
 
-**data bindings in the Run Request:**
+**data bindings in the Run Request (descriptor format):**
 
 ```jsonc
 "data": {
   "bindings": {
     "VTSAX@vanguard.mutualfund": {
-      "nav_events": "path/to/vtsax_nav.arrow"
+      "nav_events": {
+        "uri":           "path/to/vtsax_nav.arrow",
+        "payload_class": "Nav"
+      }
     },
     "SPY@nyse.etf": {
-      "bars":       "path/to/spy_1d.arrow",
-      "nav_events": "path/to/spy_nav.arrow"
+      "bars_1d": {
+        "uri":           "path/to/spy_1d.arrow",
+        "payload_class": "Bar",
+        "interval":      "1d",
+        "adjusted":      false
+      },
+      "nav_events": {
+        "uri":           "path/to/spy_nav.arrow",
+        "payload_class": "Nav"
+      },
+      "holdings": {
+        "uri":           "path/to/spy_holdings.arrow",
+        "payload_class": "HoldingsSnapshot"
+      }
     }
   }
 }
@@ -654,34 +746,63 @@ and DV01 as provide-or-derive outputs are unique to this engine.
 }
 ```
 
+**Minimum data requirements for Engine D:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | Any one of: `Bar`/`Mark` with clean prices, `YieldUpdate`, `YieldCurve` | `DataSufficiencyError` — run rejected |
+| `HasCoupon` set | `Coupon` stream | `DataSufficiencyError` |
+| `HasCreditRisk` set | `CreditSpread` or `CreditRatingEvent` stream | `DataSufficiencyError` |
+| Curve-derived mode | `YieldCurve` + `CreditSpread` for the issuer/rating | `DataSufficiencyError` if `YieldCurve` absent and no direct price |
+
 **Market data payload requirements for Engine D:**
 
 For liquid bonds with direct price quotes:
 - `Bar` or `Mark` with clean prices (the engine converts to dirty price internally)
 
 For yield-derived pricing:
-- `YieldUpdate` events carrying current YTM and optional spread-over-treasury
+- `YieldUpdate` events carrying current instrument-specific YTM and optional spread-over-treasury
 
 For curve-derived pricing:
-- `YieldCurve` events — a vector of (maturity, yield) pairs at each timestamp
-- `YieldUpdate` with `spread_over_treasury` for the credit spread
+- `YieldCurve` events — full benchmark curve (Treasury, SOFR, OIS) at each timestamp
+- `CreditSpread` events — issuer/rating spread over the benchmark curve (`HasCreditRisk`)
+- `CreditRatingEvent` events — rating changes triggering immediate repricing (`HasCreditRisk`)
 
 Always required when `HasCoupon` is set:
 - `Coupon` events — carries next payment timestamp, payment amount, accrual
 
-Optional (improves accuracy):
-- `CreditRating` change events when `HasCreditRisk` is set
-
-**data bindings in the Run Request:**
+**data bindings in the Run Request (descriptor format):**
 
 ```jsonc
 "data": {
   "bindings": {
     "US10Y@treasury.bond": {
-      "bars":          "path/to/us10y_daily.arrow",
-      "yield_updates": "path/to/us10y_yields.arrow",
-      "coupon_events": "path/to/us10y_coupons.arrow",
-      "yield_curves":  "path/to/treasury_curves.arrow"
+      "bars_1d": {
+        "uri":           "path/to/us10y_daily.arrow",
+        "payload_class": "Bar",
+        "interval":      "1d",
+        "adjusted":      false
+      },
+      "yield_updates": {
+        "uri":           "path/to/us10y_yields.arrow",
+        "payload_class": "YieldUpdate"
+      },
+      "coupon_events": {
+        "uri":           "path/to/us10y_coupons.arrow",
+        "payload_class": "Coupon"
+      },
+      "yield_curves": {
+        "uri":           "path/to/treasury_curves.arrow",
+        "payload_class": "YieldCurve"
+      },
+      "credit_spreads": {
+        "uri":           "path/to/corp_spreads.arrow",
+        "payload_class": "CreditSpread"
+      },
+      "credit_ratings": {
+        "uri":           "path/to/rating_changes.arrow",
+        "payload_class": "CreditRatingEvent"
+      }
     }
   }
 }
@@ -833,12 +954,19 @@ the core pricing computation is explicitly designed to be swapped out.
 reads `S` (the underlying price) at every event — it cannot price the option without the
 underlying being on the shared event clock.
 
+**Minimum data requirements for Engine E:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum (both required) | `IVSurface` for the underlying | `DataSufficiencyError` — run rejected |
+| Absolute minimum (both required) | Underlying price data (`Bar`/`Quote`/`Trade`) | `DataSufficiencyError` — run rejected |
+| High-fidelity fills | Option `Quote` events | Run proceeds; `degraded_fidelity`; surface-only fill model |
+| `HasEarlyExercise` set | `ExerciseEvent` stream | `degraded_fidelity`; assignment modeled from pricing model only |
+
 **Market data payload requirements for Engine E:**
 
-Hard required (run rejected without these):
+Hard required (run rejected without either):
 - `IVSurface` events for the underlying — the grid of `σ(K, T)` values at each timestamp
-
-Required for the underlying instrument:
 - `Bar`, `Quote`, or `Trade` events for the underlying price `S`
 
 Strongly recommended (improves fill fidelity from surface-only to quotes):
@@ -848,20 +976,36 @@ Optional (provide-or-derive):
 - `Greeks` events — if provided, used directly; if absent, derived from BSM
 
 Option-specific lifecycle events:
-- `ExerciseEvent` — when `HasEarlyExercise` is set; required to model assignment
+- `ExerciseEvent` — when `HasEarlyExercise` is set
 
-**data bindings in the Run Request:**
+**data bindings in the Run Request (descriptor format):**
 
 ```jsonc
 "data": {
   "bindings": {
     "AAPL@nasdaq.equity": {
-      "bars": "path/to/aapl_1d.arrow"
+      "bars_1d": {
+        "uri":           "path/to/aapl_1d.arrow",
+        "payload_class": "Bar",
+        "interval":      "1d",
+        "adjusted":      false
+      }
     },
     "AAPL-2025-01-17-C200@cboe.option": {
-      "bars":       "path/to/aapl_c200_bars.arrow",
-      "quotes":     "path/to/aapl_c200_quotes.arrow",
-      "iv_surface": "path/to/aapl_iv_surface.arrow"
+      "bars_1d": {
+        "uri":           "path/to/aapl_c200_bars.arrow",
+        "payload_class": "Bar",
+        "interval":      "1d",
+        "adjusted":      false
+      },
+      "quotes": {
+        "uri":           "path/to/aapl_c200_quotes.arrow",
+        "payload_class": "Quote"
+      },
+      "iv_surface": {
+        "uri":           "path/to/aapl_iv_surface.arrow",
+        "payload_class": "IVSurface"
+      }
     }
   }
 }
@@ -974,6 +1118,13 @@ The `payoff_component_id` (a registered component ID) is resolved at runtime thr
 `components` section of the Run Request — not stored in the instrument definition, because the
 instrument definition is caller-supplied static metadata and the component lives in the registry.
 
+**Minimum data requirements for Engine F:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | All underlyings referenced by the payoff component must have price data bound | `DataSufficiencyError` — run rejected |
+| Absolute minimum | Payoff component registered in `components` | `DataSufficiencyError` — run rejected |
+
 **Market data payload requirements for Engine F:**
 
 There are no Engine-F-specific payload variants. The engine requires whatever the payoff
@@ -982,7 +1133,7 @@ component requires, which means:
 - All underlyings referenced by the payoff component must be in the run with their own data
   bindings (their `instrument_id` appears in the `instruments` array of the Run Request)
 - The `PoolState`, `Bar`, `Quote`, or `IVSurface` data appropriate for each underlying is
-  bound in `data.bindings` under that underlying's instrument ID
+  bound in `data.bindings` under that underlying's instrument ID, using the descriptor format
 
 **Run Request `components` binding — required:**
 
@@ -1111,27 +1262,52 @@ individual token — only `NftEvent` and `FloorUpdate`.
 }
 ```
 
+**Minimum data requirements for Engine G:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | `NftEvent` stream | `DataSufficiencyError` — run rejected |
+| `HasFloor` set + strategy holds positions | `FloorUpdate` stream | `DataSufficiencyError` (positions cannot be marked) |
+| `HasGasCost` set | `GasEvent` stream OR static gas in `execution_defaults` | `DataSufficiencyError` |
+| Sell-side bid liquidity | `NftBidEvent` stream | `degraded_fidelity`; sell fills only on observed comparable sales |
+
 **Market data payload requirements for Engine G:**
 
 Required:
 - `NftEvent` events — listings, delistings, and completed sales for the collection
+
+Required when `HasFloor` is set and strategy holds positions:
 - `FloorUpdate` events — collection floor price updates for marking
 
-Optional (improves sell fill accuracy):
+Optional (improves sell fill accuracy and buy-side matching):
+- `NftBidEvent` events — active collection bids; enables immediate sell-side fill against bids
 - Trait metadata for each token (provided as static metadata, not a streaming payload)
 
-Gas data (same as Engine B):
+Gas data (required when `HasGasCost` set):
 - `GasEvent` stream or static gas price in `execution_defaults`
 
-**data bindings in the Run Request:**
+**data bindings in the Run Request (descriptor format):**
 
 ```jsonc
 "data": {
   "bindings": {
     "BAYC-7804@opensea.nft": {
-      "nft_events":    "path/to/bayc_events.arrow",
-      "floor_updates": "path/to/bayc_floor.arrow",
-      "gas_events":    "path/to/eth_gas.arrow"
+      "nft_events": {
+        "uri":           "path/to/bayc_events.arrow",
+        "payload_class": "NftEvent"
+      },
+      "floor_updates": {
+        "uri":           "path/to/bayc_floor.arrow",
+        "payload_class": "FloorUpdate"
+      },
+      "nft_bids": {
+        "uri":           "path/to/bayc_bids.arrow",
+        "payload_class": "NftBidEvent"
+      },
+      "gas_events": {
+        "uri":           "path/to/eth_gas.arrow",
+        "payload_class": "GasEvent"
+      }
     }
   }
 }
@@ -1253,24 +1429,55 @@ factor with an explicit disclosure in results.
 }
 ```
 
+**Minimum data requirements for Engine H:**
+
+| Level | Requirement | Result if absent |
+|---|---|---|
+| Absolute minimum | YES/NO price stream (`Bar` or `Quote`) | `DataSufficiencyError` — run rejected |
+| Absolute minimum | `Resolution` event stream | `DataSufficiencyError` — run rejected (cannot simulate settlement) |
+| Lifecycle accuracy | `MarketLifecycleEvent` stream | `degraded_fidelity`; engine cannot gate fills at `Locked` accurately |
+| Oracle risk modeling | `OracleEvent` stream (when `HasOracleRisk` set) | Falls back to `dispute_occurred` on `Resolution` payload |
+| CLOB fills (`HasClob`) | `BookSnapshot` + `BookDelta` for YES/NO book | `degraded_fidelity`; bar-based fill model used instead |
+
 **Market data payload requirements for Engine H:**
 
 Required:
 - `Bar` or `Quote` events for YES/NO token prices during the `Active` lifecycle phase
 - `Resolution` event — carries the outcome, oracle ID, and whether a dispute occurred
 
-Optional (for CLOB fills — currently an extension):
-- `BookSnapshot` and `BookDelta` for YES/NO token order book — enables Engine A matching
-  primitives instead of bar-based fill model
+Strongly recommended:
+- `MarketLifecycleEvent` — drives the Created → Active → Locked → Resolved → Settled state machine
+  accurately; without it, lifecycle gating is approximated from `Resolution` event timing
 
-**data bindings in the Run Request:**
+Optional:
+- `OracleEvent` — proposal, dispute, and final settlement detail for oracle risk modeling
+- `BookSnapshot` and `BookDelta` for YES/NO token order book — enables Engine A matching
+  primitives when `HasClob` is set (promotes limit order support)
+
+**data bindings in the Run Request (descriptor format):**
 
 ```jsonc
 "data": {
   "bindings": {
     "US-ELECTION-2024-TRUMP@polymarket.prediction": {
-      "bars":            "path/to/trump_yes_daily.arrow",
-      "resolution":      "path/to/trump_resolution.arrow"
+      "bars_1d": {
+        "uri":           "path/to/trump_yes_daily.arrow",
+        "payload_class": "Bar",
+        "interval":      "1d",
+        "adjusted":      false
+      },
+      "resolution": {
+        "uri":           "path/to/trump_resolution.arrow",
+        "payload_class": "Resolution"
+      },
+      "lifecycle": {
+        "uri":           "path/to/trump_lifecycle.arrow",
+        "payload_class": "MarketLifecycleEvent"
+      },
+      "oracle_events": {
+        "uri":           "path/to/trump_oracle.arrow",
+        "payload_class": "OracleEvent"
+      }
     }
   }
 }
@@ -1628,11 +1835,79 @@ but dangerous for untrusted user-submitted runs.
 
 ---
 
+## Inline bar derivation
+
+The event loop derives bars from raw input data **during** the event loop (not as a pre-pass).
+As raw ticks, order book events, and trade events arrive, the engine accumulates them into bars
+and, when an interval closes, emits a `DerivedBar` into the strategy's feature pipeline with
+`derived: true` and `source_class` set to the raw payload class it was derived from.
+
+- **What is derived (necessity-driven):** the engine derives only the `(payload_class, interval)`
+  pairs the compiled strategy plan and the fill model actually require — found by static analysis
+  of the plan — not every standard interval. This bounds memory.
+- **Boundaries:** wall-clock aligned, start at `:00`; daily bars run UTC-midnight to UTC-midnight.
+- **Construction:** from trade prints (O=first, H=max, L=min, C=last, V=Σsize); fallback = quote
+  mid `(bid+ask)/2` when no trades exist.
+- **Direction rule:** coarser-from-finer always (1m from ticks; 1h from 1m); finer-from-coarser
+  never — attempting it is a `DataSufficiencyError.non_derivable_conflict` (validation step 7).
+- **Warmup gating:** the strategy makes no decisions until the minimum lookback bars have
+  accumulated *during* the run; derivation runs through warmup.
+- **Adjusted series:** derivable from unadjusted bars + `CorporateAction` under a declared
+  `adjustment_method`; flagged derived; else signals needing it fail step 7.
+
+Configuration lives in `derived_data.bar_derivation` in the Run Request (see run-request.md §4a).
+
+---
+
+## Cross-cutting data-handling rules
+
+These resolved rules apply across every engine and complement the per-engine sections above.
+
+- **Caller-provided data always wins.** Directly bound data (bars, indicators, greeks, NAV, …) is
+  authoritative. Derivation is strictly a fallback for what was not provided. Anything the engine
+  derives is flagged `derived: true` with `source_class` lineage and can be emitted for the caller
+  to persist (`output.emit: ["derived_data"]`).
+- **Reference data vs. event streams.** A binding is `event_stream` (replayed through the clock)
+  or `reference` (loaded once, queried by timestamp). Reference entries carry `effective_ts` and
+  `knowable_ts`; lookups enforce `knowable_ts ≤ current_ts` so a backdated value cannot leak future
+  information. Entity-keyed reference data (issuer/universe/venue) is bound once in
+  `reference_bindings`; instruments resolve it via their declared `issuer_id`.
+- **Dynamic overrides static.** Live events override static configuration from their `ts_event`
+  forward, with the static value as fallback: `TradingSession`/`TradingStatus` override the
+  exchange calendar; `FeeScheduleUpdate` overrides the static `fee_schedule`.
+- **Halt behavior.** On `TradingStatus: Halted`, resting orders freeze (not cancel) and resume at
+  reopen (reopening auction if `HasAuction`); DAY orders still expire at session close.
+- **Liquidation paths are disjoint.** The strategy's own liquidation is always engine-computed from
+  Account + mark price. The external `LiquidationEvent` stream is other participants' liquidations
+  only (cascade/market-impact). `AutoDeleveragingEvent` is the one external event that *can* close
+  the strategy's own qualifying position (proportional, at the bankrupt trader's bankruptcy price).
+- **AMM pool-state reconstruction.** With `SwapEvent` flow, Engine B replays real swaps between
+  `PoolState` snapshots (higher fidelity) rather than holding the last snapshot constant.
+- **NFT sells stay conservative.** Sell fills only on an observed comparable sale; `NftBidEvent`
+  feeds the optional demand model, never an immediate fill.
+- **Oracle ordering.** Locked → Proposal → (Dispute never re-opens trading) → FinalSettlement →
+  Resolution; a `Resolution` may arrive with no `OracleEvent` for centralized oracles.
+- **Universe gating.** A dynamic universe selector may only pick instruments that were in-universe
+  (per point-in-time `UniverseMembership`) at that timestamp.
+- **Watch-vs-trade.** The run's `instruments` is the full data set; the strategy's `universe` is the
+  traded subset. Instruments in `instruments` but not `universe` are **watch-only** — read via
+  cross-instrument references (`data:<instrument>.field`) but never traded (trade ETH, forecast BTC).
+- **Universe-wide scan (cohort).** A `scanner` universe screens a **cohort data source** that
+  materializes instruments point-in-time as they appear (engine-agnostic: DEX pairs → Engine B,
+  IPOs → Engine A, NFT mints → Engine G). Each member still routes by `price_formation`.
+- **Plans, not nested strategies.** Multiple strategies compose in a **Plan** by data-flow
+  (screen `selector` → `entry` → `exit`, or concurrent independents), never by nesting. Capital is
+  shared or isolated per `account_mode`; opposing intents resolve per `conflict_policy`. See
+  [contracts/plan.md](contracts/plan.md).
+
+---
+
 ## Validation order at run start
 
-Before the first event is processed, the suite runs six validation passes in strict order.
-All six must pass or the run is rejected with a precise, typed error. There is no partial
-execution.
+Before the first event is processed, the suite runs nine validation passes in strict order.
+All nine must pass or the run is rejected with a precise, typed error. There is no partial
+execution. (This mirrors the authoritative list in [run-request.md](run-request.md) §10; if the
+two ever drift, the Run Request spec wins.)
 
 **1. Schema:** the Run Request and Strategy JSON are parsed and type-checked against their
 schemas. Any malformed JSON, missing required field, or type mismatch produces a
@@ -1667,6 +1942,25 @@ checked against the order-type matrix for each instrument's engine. A `limit` or
 is processed. A `swap_exact_in` order on a `CLOB` instrument is similarly caught. These
 mismatches produce a `CapabilityOrderTypeError` naming the instrument, the engine, and the
 invalid order type.
+
+**7. Data sufficiency:** for each `(instrument_id, engine)` pair, the suite checks the bound
+data descriptors against the per-engine minimum requirements. This pass uses the `payload_class`
+and `interval` fields from each descriptor — it does not read any data files. A missing required
+payload class that cannot be derived produces a `DataSufficiencyError` (hard rejection). A
+non-derivable conflict (strategy feature requires finer resolution than provided) also produces
+a `DataSufficiencyError.non_derivable_conflict` (hard rejection). Data that is sufficient to
+run but at reduced fidelity produces `DataSufficiencyError.degraded_fidelity` warnings (run
+proceeds, disclosed in results).
+
+**8. Plan wiring:** if the bound `strategy` is a Plan (multiple strategies), every
+`universe.from` names a strategy that exists in the Plan and has a compatible role, the wiring is
+acyclic (a DAG of strategies), and `account_mode` / `conflict_policy` are resolvable. Violations
+produce a `PlanWiringError` (see [contracts/plan.md](contracts/plan.md) §8). A single Strategy is
+the degenerate one-node Plan and passes this trivially.
+
+**9. Cohort / scanner:** if a `scanner` universe is used, its `cohort` names a bound cohort data
+source (Run Request §4d) and every filter `field` resolves to a bound market-data or signal class.
+A reference to an unbound cohort or an unresolvable filter field is a typed error.
 
 ---
 

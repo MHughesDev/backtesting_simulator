@@ -73,14 +73,14 @@ noted. Nothing here is decided; these are prompts for discussion.
 - **Q-STRAT-1** Where exactly is the expression-vs-component boundary — how much logic may a `when` expression hold before it must become a registered component? *(OD-9)*
 - **Q-STRAT-2** What is the full grammar of the expression language (operators, functions, types, null handling)?
 - **Q-STRAT-3** How are stateful indicators warmed up — is pre-start look-back data supplied, and how much?
-- **Q-STRAT-4** How does a strategy express **pairs / spread / relative-value** logic across two instruments declaratively?
+- **Q-STRAT-4** ~~How does a strategy express **pairs / spread / relative-value** logic across two instruments declaratively?~~ **RESOLVED:** cross-instrument references `data:<instrument>.field` / `signal:<instrument>.<id>` / `feature:<id>@<instrument>` ([strategy.md](spec/contracts/strategy.md) §4).
 - **Q-STRAT-5** How are **multi-leg orders** (option spreads, pairs trades) expressed and executed atomically?
 - **Q-STRAT-6** How does a strategy **react to fills, partial fills, and rejections** declaratively (no imperative callback)?
-- **Q-STRAT-7** Can strategies be composed/nested (a strategy of strategies)? *(related: OD-6)*
-- **Q-STRAT-8** How are strategy-level vs. portfolio-level constraints separated when multiple strategies share capital? *(OD-6)*
+- **Q-STRAT-7** ~~Can strategies be composed/nested (a strategy of strategies)?~~ **RESOLVED:** not nested — composed in a **Plan** by data-flow (screen→entry→exit), each strategy stays flat ([plan.md](spec/contracts/plan.md), OD-6).
+- **Q-STRAT-8** ~~How are strategy-level vs. portfolio-level constraints separated when multiple strategies share capital?~~ **RESOLVED:** Plan `account_mode` (shared/isolated) + `conflict_policy`; portfolio-level overlay stays the caller's analytics layer ([plan.md](spec/contracts/plan.md)).
 - **Q-STRAT-9** How is rebalancing cadence expressed (every event vs. scheduled vs. signal-triggered)?
 - **Q-STRAT-10** How does a strategy declare the capabilities it requires so instruments can be pre-validated against it?
-- **Q-STRAT-11** Can a strategy define a derived/intermediate universe (e.g. "top-decile by a feature")?
+- **Q-STRAT-11** ~~Can a strategy define a derived/intermediate universe (e.g. "top-decile by a feature")?~~ **RESOLVED:** `universe.type: "scanner"` screens a cohort by point-in-time market-data + signal filters ([strategy.md](spec/contracts/strategy.md) §6.3).
 - **Q-STRAT-12** How are conflicting insights on the same instrument resolved (two rules firing opposite directions)?
 
 ## F. AI models & training
@@ -100,7 +100,7 @@ noted. Nothing here is decided; these are prompts for discussion.
 
 - **Q-SIG-1** Final `signals.md` schema: what does the `Signal` payload carry, and what capability flag gates it?
 - **Q-SIG-2** How is point-in-time integrity of a signal **attested** (caller responsibility) and can the suite detect obvious violations?
-- **Q-SIG-3** Should raw documents (text) ever enter the suite, or only pre-computed numeric/categorical features?
+- **Q-SIG-3** ~~Should raw documents (text) ever enter the suite, or only pre-computed numeric/categorical features?~~ **RESOLVED:** the core never parses raw media/text; it carries point-in-time **references** (`MediaReference`/`DocumentSignal` with a `uri`) that the injected `Model` port resolves and loads for multimodal inference ([signals.md](spec/contracts/signals.md) §4–§5).
 - **Q-SIG-4** How are frequency mismatches handled (a daily sentiment signal vs. minute bars)?
 - **Q-SIG-5** How are signals keyed to instruments (entity mapping keys supplied by the caller)?
 
@@ -245,6 +245,62 @@ noted. Nothing here is decided; these are prompts for discussion.
 - **Q-PROD-2** Which asset class is the first **end-to-end vertical slice** (data → engine → strategy → metrics)?
 - **Q-PROD-3** What is the first real strategy used to validate the system against a known result?
 - **Q-PROD-4** Who are the first users (you + the platform), and what do they need first?
+
+## AA. Market-data depth, derivation & sufficiency — RESOLVED 2026-06
+
+This batch was resolved in a design pass and written into the contract/engine specs. 16 new
+payload types and 11 capability flags were added (see `contracts/market-data.md`,
+`contracts/instrument.md`); the decisions below govern how they are used.
+
+- **AA-1 Reference data vs. event streams.** ✅ Bindings carry `binding_type: event_stream | reference`. Event streams replay through the clock; reference data is loaded once and queried by timestamp. → `run-request.md` §4b.
+- **AA-2 `HasFeeScheduleUpdates` flag.** ✅ Added for consistency; gates `FeeScheduleUpdate`. → `instrument.md`.
+- **AA-3 ADL / insurance-fund behavior.** ✅ `AutoDeleveragingEvent` can force-close a proportional share of the strategy's own qualifying position at the bankrupt trader's bankruptcy price; `InsuranceFundEvent` is context. → `engine-a-order-book.md` §6, `market-data.md` §2.22.
+- **AA-4 Dynamic session/status overrides static calendar.** ✅ Engine keeps a current state starting from the static calendar, overridden by `TradingSession`/`TradingStatus` events from their `ts_event`. Most-realistic; static is fallback. → `engine-a-order-book.md` §6.
+- **AA-5 Caller-provided data always wins.** ✅ Directly bound data is authoritative; derivation is fallback-only; everything derived is flagged. → `run-request.md` §4, invariant 6.
+- **AA-6 Bar boundary alignment.** ✅ Wall-clock aligned, start at `:00`. → `run-request.md` §4a.
+- **AA-7 Standard bar construction.** ✅ From trade prints (O=first, H=max, L=min, C=last, V=Σsize); fallback = quote mid. → `run-request.md` §4a, `market-data.md` §2.26.
+- **AA-8 Daily-bar boundary.** ✅ UTC-midnight to UTC-midnight. → `run-request.md` §4a. (Closes part of Q-TIME-2 for derived bars.)
+- **AA-9 Warmup gating.** ✅ No strategy decisions until minimum lookback bars accumulate *during* the run; derivation runs through warmup. → `run-request.md` §4a.
+- **AA-10 Necessity-driven derivation.** ✅ Derive only the `(payload_class, interval)` set the compiled strategy + fill model require (static analysis of the plan); bounds memory. → `run-request.md` §4a.
+- **AA-11 Derived-data provenance.** ✅ Anything derived is flagged `derived: true` + `source_class`; emitted via `output.emit: ["derived_data"]` so the caller can persist it. → `run-request.md` §4a/§7.
+- **AA-12 Adjusted-series derivation.** ✅ Engine may derive the adjusted series from unadjusted bars + `CorporateAction` under a declared `adjustment_method` (default back-adjust); flagged derived; else signals needing it fail sufficiency. → `run-request.md` §4a.
+- **AA-13 Point-in-time for reference lookups.** ✅ Reference entries carry `effective_ts` + `knowable_ts`; lookups enforce `knowable_ts ≤ current_ts`. → `market-data.md` §4.5, `run-request.md` §4b/invariant 4.
+- **AA-14 Entity-keyed reference data.** ✅ `reference_bindings` block keyed by `issuer:/universe:/venue:`; instruments declare `issuer_id`. Binds issuer-level data (CreditSpread, CreditRatingEvent) once for many bonds. → `run-request.md` §4b, `instrument.md`.
+- **AA-15 `FeeScheduleUpdate` precedence.** ✅ Dynamic overrides static `fee_schedule`; static is fallback. → `market-data.md` §2.21, `engine-a-order-book.md` §6.
+- **AA-16 Halt behavior.** ✅ On `Halted`, resting orders are frozen (not cancelled), resume at reopen (reopening auction if `HasAuction`); DAY orders still expire at session close. → `engine-a-order-book.md` §6.
+- **AA-17 NFT sell — conservative default.** ✅ Sell fills only on an observed comparable sale; `NftBidEvent` feeds the optional demand model only, never an immediate fill. → `engine-g-marketplace.md` §4, `market-data.md` §2.23.
+- **AA-18 SwapEvent pool-state reconstruction.** ✅ Engine B replays real `SwapEvent`s between `PoolState` snapshots (higher fidelity) instead of holding the last snapshot constant. → `engine-b-amm.md` §8a, `market-data.md` §2.19.
+- **AA-19 Oracle event ordering.** ✅ Locked → Proposal → (Dispute, no re-open) → FinalSettlement → Resolution; Resolution may arrive without an `OracleEvent` (centralized oracles). → `engine-h-event-resolution.md` §2, `market-data.md` §2.24.
+- **AA-20 External liquidation disjoint.** ✅ External `LiquidationEvent` = other participants only (cascade/market-impact); never closes the strategy's own position (always engine-computed from Account + mark). → `engine-a-order-book.md` §6, `market-data.md` §2.22.
+- **AA-21 ADL reaches strategy position.** ✅ (See AA-3 — the realism call: ADL does touch the strategy's own qualifying position.)
+- **AA-22 UniverseMembership gates the dynamic selector.** ✅ A dynamic universe selector may only pick instruments in-universe (per PIT membership) at that timestamp. → `market-data.md` §2.25.
+
+**Still open from this pass (carried forward):**
+
+- **AA-OPEN-1** `DerivedBar` vs. caller-`Bar` collision at the same `ts_event` is resolved by AA-5 (caller wins), but the exact feature-pipeline *ordering* when both are emitted needs the feature-pipeline spec to state it explicitly.
+- **AA-OPEN-2** `TradingSession` (event) vs. exchange-calendar (reference) — override semantics are set (dynamic wins), but the precise merge when a reference calendar *and* a session event disagree on the same interval is not yet edge-case-specified.
+- **AA-OPEN-3** Memory ceiling for derived intervals under `intervals: "all_standard"` over a large universe is bounded by necessity-derivation (AA-10) but has no hard cap policy.
+
+## BB. Multi-asset, scanning & strategy composition — RESOLVED 2026-06
+
+Resolved in a design pass and written into the specs.
+
+- **BB-1 Cross-instrument references.** ✅ A strategy evaluated for one instrument can read another's data/signals/features via `data:<instrument>.field`, `signal:<instrument>.<id>`, `feature:<id>@<instrument>`. → `strategy.md` §4. (Trade ETH while forecasting BTC.)
+- **BB-2 Watch-vs-trade.** ✅ `instruments` (Run Request) = all data incl. watch-only references; `universe` (Strategy) = the traded subset; the difference is watch-only reference instruments. → `strategy.md` §6.0.
+- **BB-3 Scanner universe (engine-agnostic, not "new"-specific).** ✅ `universe.type: "scanner"` screens a **cohort** by point-in-time market-data + signal filters; works for DEX pairs/NFTs/IPOs/prediction markets, any universe. → `strategy.md` §6.3.
+- **BB-4 Cohort data source.** ✅ A market-wide source (`cohorts`) **materializes instruments point-in-time** as they appear, via an `instrument_template` + per-asset feed overrides; prevents survivorship bias by construction. → `run-request.md` §4d.
+- **BB-5 The Plan (multi-strategy composition).** ✅ A third layer above Strategy holds multiple flat strategies wired by **data-flow** (screen→entry→exit), or concurrent independents. **Not nested.** → `plan.md`. Resolves **OD-6**, **Q-STRAT-7/8**.
+- **BB-6 Strategy kickoff = publish/subscribe.** ✅ A `selector` strategy publishes a candidate set; `entry` strategies subscribe via `universe.from`. No imperative calls, no nested ifs. → `plan.md` §4.
+- **BB-7 Multiple concurrent strategies.** ✅ A Plan with unwired `standalone` strategies runs them side by side — applies to plain single-asset styles too. → `plan.md` §2–§3.
+- **BB-8 Account mode.** ✅ Plan `account_mode`: `shared` (default; net into one injected Account) or `isolated` (per-strategy partition). → `plan.md` §5.
+- **BB-9 Conflict policy.** ✅ Plan `conflict_policy`: `net` (default), `priority`, or `reject` for opposing intents on one asset. → `plan.md` §6. (Resolves Q-STRAT-12 at the Plan level.)
+- **BB-10 Cohort instrument materialization.** ✅ Per-cohort `instrument_template` of common fields + per-asset overrides from the feed; `price_formation` routes each member to its engine. → `run-request.md` §4d.
+
+**Still open from this pass (carried forward):**
+
+- **Q-PLAN-1** Cross-strategy capital allocation under `shared` (fixed/dynamic/caller-driven split of buying power).
+- **Q-PLAN-2** Whether an `exit` strategy can target positions opened by a *specific* entry strategy (position tagging) vs. the netted book.
+- **Q-PLAN-3** Screen→entry hand-off latency (configurable delay for realism).
 
 ---
 

@@ -28,6 +28,28 @@ This is the single field that selects the engine. Every other classification is 
 A bitmask declared by each instrument. Engines and strategies check capabilities before
 accessing capability-gated data or order types.
 
+**How to read this — capabilities are the system's "feature switches."** This is the mechanism
+that lets one engine cover many asset classes without ever branching on asset type (see
+[ADR-0003](../../adr/0003-capability-based-instrument-model.md)). The model has three properties
+worth holding in mind:
+
+- **Additive, not exclusive.** An instrument sets every flag that is true of it and leaves the
+  rest unset. A BTC perpetual sets `HasOrderBook + HasFunding + HasMarkPrice + HasLiquidation +
+  IsLeveraged`; a plain stock sets `HasOrderBook + HasCorporateActions + HasSessions`. There is no
+  "type" — the *combination of flags* is the instrument's behavior.
+- **Each flag gates three things.** A flag simultaneously (1) declares which **payload variants**
+  are valid for that instrument ([market-data.md](market-data.md)), (2) permits or forbids certain
+  **order types** (the order-type matrix in [engines/README.md](../engines/README.md)), and (3)
+  switches on the corresponding **engine mechanic** (funding accrual, daily NAV reset, barrier
+  monitoring, …). A flag with no bound data is caught at run start as a `DataSufficiencyError`
+  rather than silently doing nothing.
+- **Combinations are validated, not trusted.** Contradictory or incomplete flag sets are rejected
+  at validation (step 3): e.g. `HasFunding` without `HasMarkPrice` is invalid because funding is
+  computed against the mark price, and an instrument cannot route to two engines at once.
+
+The "Used by" column names the engine(s) that act on each flag; a flag is only meaningful for an
+instrument whose `price_formation` routes to one of those engines.
+
 | Flag | Meaning | Used by |
 |---|---|---|
 | `HasOrderBook` | CLOB data (bids, asks, book depth) is valid | Engine A |
@@ -66,6 +88,20 @@ accessing capability-gated data or order types.
 | `HasResolution` | Resolution events will be emitted | Engine H |
 | `HasOracleRisk` | Oracle dispute possible | Engine H |
 | `HasProbabilityPrice` | Price = probability (bounded 0–1) | Engine H |
+| `HasClob` | Prediction market runs a CLOB for YES/NO tokens; promotes limit order support | Engine H |
+| `HasL3OrderBook` | True L3/MBO per-order event data is valid (`OrderBookOrderEvent`); distinct from `HasOrderBook` which covers L2 aggregated depth | Engine A |
+| `HasAuction` | Auction imbalance and result events may be emitted (`AuctionImbalance`, `AuctionResult`) | Engine A |
+| `HasTradingStatus` | `TradingStatus` events (halts, circuit breakers) may be emitted | Engine A |
+| `HasUniverseMembership` | `UniverseMembership` reference data is available for this instrument/universe | Engine A |
+| `HasHoldings` | `HoldingsSnapshot` data is valid (ETFs, mutual funds with basket data) | Engine C |
+| `HasCreationRedemption` | ETF creation/redemption basket data (`CreationRedemptionBasket`) is valid | Engine C |
+| `HasSwapEvent` | `SwapEvent` historical transaction data is valid (AMM pools) | Engine B |
+| `HasLiquidationStream` | External `LiquidationEvent` data stream is provided; engine can simulate liquidation without it | Engine A, E |
+| `HasBorrowRate` | `BorrowRate` stream is valid; required when `HasShortBorrow` is set and strategy shorts | Engine A |
+| `HasFeeScheduleUpdates` | `FeeScheduleUpdate` events may change the fee schedule over the run; dynamic overrides the static `fee_schedule` | Engine A, B, G |
+| `HasExogenousSignals` | Instrument participates in the Exogenous-Signal Plane; gates the `signal:*` grammar and model `context_inputs` (news/social/macro/media) | all (features/models) |
+
+> `HasOpenInterest` (listed above) gates `OpenInterest` data for futures/options.
 
 ---
 
@@ -79,6 +115,11 @@ Instrument {
   exchange:          VenueId,
   currency:          CurrencyCode,   // quote / P&L currency
   asset_class:       AssetClass,     // informational classification
+  issuer_id:         Option<String>, // entity key for issuer-level reference data (bonds, credit);
+                                     //   resolves CreditSpread/CreditRatingEvent via reference_bindings
+                                     //   "issuer:<issuer_id>" (see run-request.md §4b)
+  entity_id:         Option<String>, // broader entity key (company/protocol/collection) used to
+                                     //   resolve Exogenous-Signal Plane data by entity (signals.md)
 
   // ── routing (the only thing that matters for engine selection) ─
   price_formation:   PriceFormation, // CLOB | AMM | NAV | DEALER | CHAIN | OTC | MARKETPLACE | ORACLE

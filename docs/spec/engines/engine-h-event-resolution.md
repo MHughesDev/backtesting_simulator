@@ -36,6 +36,29 @@ Created → Active (trading) → Locked (event passed, awaiting oracle) → Reso
 The engine enforces the lifecycle: **fills are rejected once a market is `Locked`.** Trading only
 occurs in `Active`; payout only after `Resolved`.
 
+Lifecycle transitions are driven by `MarketLifecycleEvent` payloads (see [contracts/market-data.md](../contracts/market-data.md)
+§2.24). Without a `MarketLifecycleEvent` stream, the engine cannot know when a market transitions
+to `Locked` and will incorrectly allow fills up to the `Resolution` event — a `DataSufficiencyError`
+with `degraded_fidelity` is emitted when this stream is absent, not a hard rejection, because
+some datasets only have the resolution event. However, `MarketLifecycleEvent` is strongly
+recommended for realistic lifecycle gating.
+
+**Oracle events:** `OracleEvent` payloads carry proposal, dispute, and final settlement detail
+used by the oracle risk model when `HasOracleRisk` is set. If `HasOracleRisk` is set but no
+`OracleEvent` stream is provided, the engine falls back to the `dispute_occurred` field on the
+`Resolution` payload.
+
+**Realistic event ordering.** The expected sequence is:
+`MarketLifecycleEvent: Locked` (event occurred, trading stops) → `OracleEvent: Proposal` (proposed
+outcome) → an optional dispute window in which `OracleEvent: Dispute` may arrive →
+`OracleEvent: FinalSettlement` → `Resolution` (binary payout). Two hard rules:
+
+- **A `Dispute` never re-opens trading.** Once `Locked`, a market never returns to `Active`; a
+  dispute only delays finality (and extends the oracle-risk window). Fills stay rejected throughout.
+- **`Resolution` may arrive with no preceding `OracleEvent`.** Simple/centralized oracles (e.g.
+  Kalshi) report a single outcome directly. When `OracleEvent`s *are* present, they gate the
+  dispute/latency/oracle-risk modeling; when absent, resolution is taken at face value.
+
 ---
 
 ## 3. Probability-bounded trading
@@ -115,10 +138,12 @@ auxiliary record tagged `resolution` with the outcome and entry-probability for 
 **CLOB extension (first-class for liquid markets):** Polymarket runs a full CLOB for major
 markets (US elections, Fed meetings) on Polygon; Kalshi is an SEC-regulated exchange with
 standard CLOB mechanics. Resting limit orders on YES/NO outcome tokens are *the normal trading
-mechanic* for liquid prediction markets — not a fringe extension. The order-type matrix marks
-limit orders as ❌ for Engine H today; this should be promoted to ✅ when either (a) a Kalshi
-or high-volume Polymarket market is in the run, or (b) a `HasClob` capability flag is set on
-the instrument. This is the highest-priority open item for this engine.
+mechanic* for liquid prediction markets — not a fringe extension. The `HasClob` capability flag
+(see [contracts/instrument.md](../contracts/instrument.md)) promotes limit order support in
+Engine H: when `HasClob` is set, the order-type matrix for Engine H includes `limit` orders
+and Engine A's matching primitives are used for YES/NO token order book fills. When `HasClob`
+is not set, Engine H operates in market-order-only mode. This is the highest-priority open item
+for this engine.
 
 - Default oracle-dispute / incorrect-resolution model and its parameters.
 - Multi-outcome (non-binary) markets — categorical resolution as an extension.

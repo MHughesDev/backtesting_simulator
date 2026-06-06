@@ -133,9 +133,11 @@ simulate_swap(working_state, direction, amount_in, max_slippage_bps) -> SwapResu
 
 - **Slippage tolerance** (`max_slippage_bps`) models the on-chain `minAmountOut` guard: exceed
   it and the swap reverts (records a rejection, not a bad fill).
-- **Gas:** per-swap gas cost from a `GasEvent` stream or run config, in the chain's native unit,
-  converted and deducted via `Account`. On EVM this can make small swaps uneconomical; on Solana
-  it is negligible. Gas always appears as an explicit P&L line.
+- **Gas:** per-swap gas cost from a `GasEvent` stream (see [contracts/market-data.md](../contracts/market-data.md) §2.19)
+  or a static gas price in `execution_defaults`, in the chain's native unit, converted and
+  deducted via `Account`. On EVM this can make small swaps uneconomical; on Solana it is
+  negligible. Gas always appears as an explicit P&L line. `GasEvent` is required when `HasGasCost`
+  is set and no static gas config is present — absence is a `DataSufficiencyError`.
 - **MEV (optional):** a configurable sandwich tax adds slippage to swaps above a visibility
   threshold; or a data-driven model if MEV data is supplied. Off by default.
 
@@ -163,6 +165,30 @@ are the dominant real costs on AMMs.
 - Swaps priced against the latest observed `PoolState`; working-copy mutations are deterministic.
 - Within a block/timestamp, swaps process in `(instrument_id, seq)` order.
 - No swap sees a `PoolState` dated after its own decision (look-ahead safety).
+
+---
+
+## 8a. SwapEvent usage — pool-state reconstruction (the realistic mode)
+
+`PoolState` is a state snapshot; `SwapEvent` (§2.19 of the market data contract) is a historical
+transaction carrying per-tx inputs/outputs and gas used. The two compose into the higher-fidelity
+pricing mode.
+
+When `HasSwapEvent` is set and a `SwapEvent` stream is bound, the engine **reconstructs the pool's
+intermediate states by replaying the real swaps** between observed `PoolState` snapshots, rather
+than holding the last snapshot constant until the next one arrives. The strategy's own swap is
+therefore priced against a pool that has been advanced by every real swap that occurred up to the
+current block / `tx_index`. Mechanically:
+
+1. The most recent observed `PoolState` is the anchor (ground truth).
+2. Each subsequent real `SwapEvent` is applied to advance the working state forward, in
+   `(block_number, tx_index)` order.
+3. The strategy's hypothetical swap is priced against that advanced state, then applied to the
+   working copy (which still resets to reality at the next observed `PoolState`).
+
+This is the **realistic default when swap flow is available**. Without `SwapEvent`, the engine
+holds the last observed `PoolState` constant between snapshots (lower intra-snapshot fidelity,
+flagged in results). `SwapEvent` is optional; the engine operates correctly with `PoolState` alone.
 
 ---
 

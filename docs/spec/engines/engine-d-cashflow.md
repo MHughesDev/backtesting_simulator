@@ -30,9 +30,20 @@ Cash and positions live in the injected `Account`
 
 | Mode | When | How |
 |---|---|---|
-| **Market** | Liquid bonds with quoted `clean_price` | Use the quote |
-| **Yield-derived** | A `YieldUpdate` (YTM) is provided | Price = PV of cash flows discounted at YTM |
-| **Curve-derived** | Only a `YieldCurve` + credit spread exists | Discount cash flows at the curve point for each tenor + the issuer/rating spread |
+| **Market** | Liquid bonds with quoted `clean_price` via `Bar` or `Mark` | Use the quote directly |
+| **Yield-derived** | A `YieldUpdate` (instrument-specific YTM) is provided | Price = PV of cash flows discounted at YTM |
+| **Curve-derived** | A `YieldCurve` + `CreditSpread` for the issuer/rating exists | Discount cash flows at the curve point for each tenor + the credit spread |
+
+**YieldCurve vs. YieldUpdate:** `YieldUpdate` is instrument-specific (carries the YTM of a
+single bond). `YieldCurve` is the full benchmark curve (Treasury, SOFR, OIS, etc.) used when
+deriving yields for instruments without direct quotes (see [contracts/market-data.md](../contracts/market-data.md)
+§2.13). Both may be bound simultaneously.
+
+**Credit data (`HasCreditRisk`):** `CreditSpread` carries the OAS, Z-spread, or treasury spread
+for the issuer/rating bucket used in curve-derived pricing. `CreditRatingEvent` triggers an
+immediate repricing when a rating changes — applied in strict `ts_event` order before pricing at
+that timestamp. If `HasCreditRisk` is set but neither stream is provided, the run is rejected
+with a `DataSufficiencyError`.
 
 Bond price (frequency `f`, periods `N`, coupon `C`, face `F`, yield `y`):
 
@@ -94,8 +105,8 @@ sell at dirty − half-spread; spread is a configurable per-tier parameter.
 
 - **Maturity:** at `maturity_date`, `settle` force-closes the position — par value + final
   coupon credited.
-- **Credit events:** a `CreditRating` change reprices the credit spread (and hence the
-  model price) from that event forward.
+- **Credit events:** a `CreditRatingEvent` changes the rating bucket used for `CreditSpread`
+  lookup, repricing the bond from that `ts_event` forward.
 - **MBS prepayment (extension):** principal can be repaid early per a prepayment model (CPR /
   PSA), shortening effective duration unpredictably and reshaping the cash-flow stream. The most
   complex fixed-income subtype; modeled behind a prepayment-curve input.

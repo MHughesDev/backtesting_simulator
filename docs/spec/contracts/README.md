@@ -1,19 +1,23 @@
 # Contracts
 
-The five contracts are the system's public interface. The caller must satisfy the input
-contracts (1–4); the suite returns the output contract (5).
+The contracts are the system's public interface. The caller satisfies the **input** contracts
+(everything the caller supplies — instruments, market data, signals, strategy/plan, model and
+training ports); the suite returns the **output** contract (Result / Metrics). The set has grown
+past the original five as the design matured — the table below is the current, authoritative list.
 
 A "contract" here means a **typed interface with enforced invariants** — not just a data
 schema. The suite validates every input against these contracts at run time and rejects
 under-specified or malformed inputs with precise error messages.
 
-## The five contracts
+## The contracts
 
 | # | Contract | Direction | Spec |
 |---|---|---|---|
 | 1 | **Instrument** | Caller → Suite | [instrument.md](instrument.md) |
 | 2 | **Market Data** | Caller → Suite | [market-data.md](market-data.md) |
+| 2b | **Signals** (Exogenous-Signal Plane) | Caller → Suite | [signals.md](signals.md) |
 | 3 | **Strategy** | Caller supplies as JSON at runtime, Suite compiles & drives | [strategy.md](strategy.md) |
+| 3b | **Plan** (multi-strategy composition) | Caller supplies as JSON at runtime | [plan.md](plan.md) |
 | 4 | **Model** | Caller implements, Suite calls | [model.md](model.md) |
 | 4b | **Training** (the `Trainer` port) | Caller implements, Suite orchestrates | [training.md](training.md) |
 | 5 | **Result / Metrics** | Suite → Caller | [metrics.md](metrics.md) *(TBD)* |

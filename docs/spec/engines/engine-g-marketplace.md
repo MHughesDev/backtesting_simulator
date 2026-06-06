@@ -62,8 +62,14 @@ A sell is a **listing** at a chosen price; a sale happens when a buyer arrives:
 
 - **Conservative (default):** the listing fills only when a later **observed comparable sale**
   occurs at or above the listing price (matched by collection and, if available, trait/rarity).
+  This is the default even when standing bids exist — see below.
 - **Demand-model (optional):** a configurable acceptance model estimates fill probability/timing
-  from historical demand — higher fidelity, more assumptions.
+  from historical demand. `NftBidEvent` standing bids (collection/trait/token offers, §2.23 of the
+  market data contract) are an **input to this model**, not an immediate-fill trigger. A standing
+  bid does **not** by itself produce a sell fill in the default model: bids can be withdrawn, may be
+  wash activity, and may never have actually executed against the strategy's specific token, so
+  treating one as a guaranteed fill would be optimistic. The demand model uses bid depth/price as
+  evidence of demand — higher fidelity, more assumptions, disclosed in results.
 
 Either way the engine reports the realized sale price net of marketplace fee, royalty, and gas.
 

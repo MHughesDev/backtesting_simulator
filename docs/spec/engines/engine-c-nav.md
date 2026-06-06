@@ -59,9 +59,20 @@ constraint that distinguishes funds from order-book assets.
 NAV is **provide-or-derive**:
 
 - **Provided:** a `Nav` payload stream (official end-of-day NAV) — used directly.
-- **Derived:** from `Holdings` + underlying prices: `NAV = (Σ holdingᵢ · priceᵢ − liabilities) / shares_outstanding`. Requires basket data.
+- **Derived:** from `HoldingsSnapshot` + underlying prices: `NAV = (Σ holdingᵢ · priceᵢ − liabilities) / shares_outstanding`.
+  Requires `HasHoldings` capability and a `HoldingsSnapshot` binding for each holdings disclosure
+  (see [contracts/market-data.md](../contracts/market-data.md) §2.18). Each underlying referenced
+  in the holdings must itself be bound with price data.
 - **iNAV** (intraday indicative) is optional and lower-accuracy; used only for premium/discount
   signals, never as a fund fill price.
+
+The absolute minimum for Engine C is: `Nav` stream **OR** (`HoldingsSnapshot` + underlying price
+data for all holdings). Without either, the run is rejected with a `DataSufficiencyError`.
+
+**ETF creation/redemption** (`HasCreationRedemption`): when a `CreationRedemptionBasket` binding
+is provided, the engine can model authorized-participant arbitrage mechanics and the basket
+composition used for in-kind creation/redemption. This is optional — absence does not affect NAV
+computation but limits ETF mechanics modeling.
 
 **Premium/discount** (ETFs): `(market_price − NAV) / NAV`, surfaced for mean-reversion
 strategies and tracking-error metrics.

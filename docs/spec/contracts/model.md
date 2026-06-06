@@ -37,8 +37,11 @@ trait Model {
     fn version(&self) -> Version;
 
     /// Pure inference. `inputs` are already PIT-bound by the engine.
-    /// Must be deterministic given the same inputs + seed.
-    fn infer(&self, fn_name: &str, inputs: &FeatureFrame, ctx: &InferContext) -> Inference;
+    /// `context` carries the optional point-in-time exogenous bundles (news/social/media
+    /// references) the strategy requested via `context_inputs` — empty when none were declared.
+    /// Must be deterministic given the same inputs + context + seed.
+    fn infer(&self, fn_name: &str, inputs: &FeatureFrame, context: &ContextBundle,
+             ctx: &InferContext) -> Inference;
 
     /// Optional. Only called when a strategy opts into training.
     /// `train_data` is guaranteed to contain only ts_event ≤ ctx.current_ts.
@@ -53,6 +56,21 @@ struct Inference {
     confidence: Option<f64>,      // optional confidence / probability
     extra:      Map<String, Value>, // any additional named outputs
 }
+
+/// The point-in-time exogenous bundle assembled per inference call from the strategy's
+/// `context_inputs` (see strategy.md §8.3, signals.md §5). Every item satisfies
+/// ts_available ≤ current_ts — the engine cannot hand the model anything not yet knowable.
+struct ContextBundle {
+    items: Map<String, Vec<ExogenousItem>>,   // keyed by the context_inputs name (e.g. "recent_posts")
+}
+
+/// One exogenous item. Numeric/categorical features arrive resolved; raw media/text arrives
+/// as a reference (URI + modality) that the MODEL — not the suite — loads and decodes.
+enum ExogenousItem {
+    Signal   { value: Value, ts_available: i64 },
+    Document { features: Map<String, Value>, uri: Option<String>, ts_available: i64 },
+    Media    { modality: Modality, uri: String, features: Map<String, Value>, ts_available: i64 },
+}
 ```
 
 ---
@@ -66,6 +84,7 @@ The mapping from the strategy JSON `models` node to this interface:
 | `model_id` + `model_version` | `Model::id()` / `version()` the platform resolves |
 | `inference_fn` | `fn_name` argument to `infer` |
 | `inputs` (feature bindings) + `input_window` | the PIT `FeatureFrame` passed to `infer` |
+| `context_inputs` (PIT exogenous bundles) | the `ContextBundle` passed to `infer` (§9) |
 | `frequency` | when the engine calls `infer` |
 | `outputs.value` / `outputs.confidence` | names bound from `Inference.value` / `.confidence` |
 | `fallback` | what the engine does when `infer` errors or output is stale |
@@ -164,4 +183,31 @@ A model-using backtest is reproducible only if all hold:
 - If training is enabled, the training method and its data window are deterministic.
 
 The suite enforces PIT and threading determinism; **weight/version stability is the
-platform's responsibility** (see open questions in [strategy.md](strategy.md) §15).
+platform's responsibility** (see open questions in [strategy.md](strategy.md) §16).
+
+---
+
+## 9. Multimodal / context-bundle inference
+
+A model node can ask for **point-in-time exogenous context** beyond its structured `inputs` — the
+news, social posts, images, or videos that existed at time *t*. This is how a model scores a meme
+coin off the actual posts it launched on, or weighs a stock on the headlines published that hour.
+The strategy declares this with `context_inputs` (see [strategy.md](strategy.md) §8.3); the engine
+assembles a `ContextBundle` per inference call and passes it to `infer`.
+
+The division of labor is deliberate and preserves "the suite owns no data and no models":
+
+- **The suite** collects, per `context_inputs` entry, every exogenous record with
+  `ts_available ≤ current_ts` inside the declared `lookback` window (capped by `max_items`), orders
+  it deterministically by `(ts_available, source_id, seq)`, and hands it over as the `ContextBundle`.
+  It never decodes media.
+- **The model (caller code)** receives the bundle. For `Signal`/`Document` items it gets resolved
+  features directly; for `Media` and `Document.uri` items it gets a **reference** (a URI + modality)
+  and is responsible for loading and decoding the raw bytes itself. A model may be fully multimodal
+  (text + image + video) — that work lives entirely in the caller's adapter.
+
+Two guarantees the engine still enforces around this: **look-ahead safety** (nothing with
+`ts_available > current_ts` can appear in a bundle — the exogenous clock, distinct from the
+market-data `ts_event` clock, is described in [signals.md](signals.md) §1) and **determinism**
+(the same data + seed yields the same bundle, so the inference is reproducible provided the model
+itself is seeded). Full mechanics: [signals.md](signals.md) §5.

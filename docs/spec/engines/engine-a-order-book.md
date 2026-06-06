@@ -73,10 +73,17 @@ configuration that would apply fills against adjusted prices.
 
 | Fidelity | Data available | Matching behavior |
 |---|---|---|
-| **L3** | `BookDelta`/`BookSnapshot` with per-order detail | True queue-position priority; partial fills as volume trades through your level |
-| **L2** | Aggregated depth (price→size) | Walk the book levels; exact book-walk slippage; queue approximated by size-ahead |
+| **L3** | `OrderBookOrderEvent` (per-order MBO data; `HasL3OrderBook` set) | True queue-position priority; partial fills as volume trades through your level |
+| **L2** | `BookDelta`/`BookSnapshot` (aggregated depth; `HasOrderBook` set) | Walk the book levels; exact book-walk slippage; queue approximated by size-ahead |
 | **L1 / BBO** | `Quote` (best bid/ask + sizes) | Fill at touch up to displayed size; remainder via slippage heuristic (§5) |
+| **Trade** | `Trade` tick prints | L1 fill model with trade-price reference; bar derivation available |
 | **Bar** | `Bar` OHLCV only | Synthetic fill model with intrabar assumptions (§5); no queue |
+
+**L2 vs. L3 distinction:** `BookDelta` and `BookSnapshot` are **L2** — they carry aggregated
+size per price level, but not individual order identity. `OrderBookOrderEvent` is **L3/MBO** —
+it carries each individual order's ID, action, and priority timestamp. True queue-position
+reconstruction requires L3. If only `BookDelta`/`BookSnapshot` is bound, the engine classifies
+the run as L2 regardless of whether `HasL3OrderBook` is set.
 
 The same engine, the same order semantics — only the realism changes. The run records the
 fidelity used so results disclose it.
@@ -151,15 +158,24 @@ submit → validate(caps, tick/lot) → apply latency →
 
 | Capability | Behavior |
 |---|---|
-| `HasSessions` | Orders gated to allowed sessions; pre/after-hours optional; weekend/holiday gaps from the exchange calendar; `DAY` orders expire at close. |
-| `HasFunding` | At each `next_funding_ts`, `funding_payment = position · mark · rate`; applied via `Account`; recorded separately from trading P&L. |
-| `HasMarkPrice` | Maintains `mark_price` distinct from last trade; used for unrealized P&L, stops, and liquidation. |
-| `HasLiquidation` / `IsLeveraged` | Each event: query collateral & maintenance margin from `Account`; if `mark` crosses the liquidation price, force-close at bankruptcy/mark price and report. Cascade modeling optional if `LiquidationEvent` data is provided. |
+| `HasSessions` | Orders gated to allowed sessions; pre/after-hours optional; weekend/holiday gaps from the exchange calendar; `DAY` orders expire at close. **Session-state model:** the engine maintains a current session state per instrument that **starts from the static exchange calendar** and is **overridden by incoming `TradingSession` events** from their `ts_event` forward (dynamic wins; static is the fallback) — matching live trading where the exchange's real-time messages are authoritative and the calendar is only the default expectation. |
+| `HasTradingStatus` | `TradingStatus` events gate fills: no fills during `Halted`, `Locked`, `CancelOnly`, or `PostOnly`. **Halt behavior:** on `Halted`, resting limit/stop orders are **frozen, not cancelled** — they persist through the halt with no fills and resume on reopen (participating in the reopening auction if `HasAuction`). `DAY` orders still expire at session close if the halt runs past it. Like sessions, dynamic `TradingStatus` overrides the static calendar state. |
+| `HasAuction` | `AuctionImbalance` and `AuctionResult` events are emitted for open/close and halt-reopen auctions. Fill model uses `AuctionResult.official_price` for fills during the auction period. |
+| `HasFunding` | At each `next_funding_ts`, `funding_payment = position · mark · rate`; applied via `Account`; recorded separately from trading P&L. Requires `Funding` payload stream. |
+| `HasMarkPrice` | Maintains `mark_price` distinct from last trade; used for unrealized P&L, stops, and liquidation. Requires `MarkUpdate` payload stream. |
+| `HasLiquidation` / `IsLeveraged` | Each event: query collateral & maintenance margin from `Account`; if `mark` crosses the liquidation price, force-close at bankruptcy/mark price and report. This is the **only** path that closes the strategy's *own* position on a margin breach. |
+| `HasLiquidationStream` | An external `LiquidationEvent` stream is bound — **other participants'** liquidations only. It feeds the market-impact / cascade model (added slippage, depth shocks) and **never closes the strategy's own position** (that is always engine-computed from Account + mark, above). The two paths are disjoint. Without this stream, cascade effects are not modeled. |
+| `AutoDeleveraging` (`AutoDeleveragingEvent` + `InsuranceFundEvent`) | On an `AutoDeleveragingEvent`, if the strategy holds a qualifying (profitable, leveraged) position on `affected_side`, the engine force-closes a **proportional share at the liquidated trader's bankruptcy price**, reports to `Account`, and notifies the strategy — matching real ADL when the insurance fund is exhausted. `InsuranceFundEvent` supplies the fund-balance context. Both optional; absent them, ADL is not modeled. |
 | `HasExpiry` (futures) | At `expiry_date`, settle open positions at `settlement_price` (cash) or warn/forced-close (physical). |
-| `HasRollSchedule` | At a roll date, emit two fills: close front-month + open back-month at the observed spread. The **continuous series construction method** — Panama Canal (back-adjusted; prices can go negative; returns accurate), Proportional (ratio-adjusted; levels preserved), or Unadjusted (raw stitch; artificial gaps) — is a per-instrument config parameter. Method selected affects only the adjusted series used for signals; fills always use per-contract unadjusted prices. |
-| `HasSwapRates` (FX) | At the daily rollover, apply `swap_long/short`; triple on Wednesdays; mark across weekend gaps. |
-| `HasShortBorrow` | Accrue borrow cost daily on open short positions via `Account`. |
-| `HasCorporateActions` / `HasTokenEvents` | Apply dividends/splits/mergers/forks/airdrops in strict `ts_event` order before price matching at that timestamp. |
+| `HasRollSchedule` | At a roll date, emit two fills: close front-month + open back-month at the observed spread. `RollSchedule` reference data declares roll dates and method. `ContinuousSeriesMetadata` declares the continuous series construction method (Panama Canal, Proportional, Unadjusted). Fills always use per-contract unadjusted prices. |
+| `HasSwapRates` (FX) | At the daily rollover, apply `swap_long/short` from `SwapRate` payload (NOT `Funding`); triple on Wednesdays; mark across weekend gaps. `SwapRate` and `Funding` are distinct payloads with distinct semantics. |
+| `HasShortBorrow` | Accrue borrow cost daily on open short positions via `Account`. Requires `BorrowRate` stream when `HasBorrowRate` is also set. |
+| `HasBorrowRate` | `BorrowRate` stream is bound. When absent but `HasShortBorrow` is set and the strategy shorts, a `DataSufficiencyError` is raised. |
+| `HasCorporateActions` / `HasTokenEvents` | Apply dividends/splits/mergers/forks/airdrops in strict `ts_event` order before price matching at that timestamp. `CorporateAction` / `TokenEvent` streams required respectively. |
+| `HasL3OrderBook` | `OrderBookOrderEvent` stream is bound; enables L3 fidelity mode with true queue-position reconstruction. |
+| `HasOpenInterest` | `OpenInterest` events are valid. Carried through to metrics for futures/perps. |
+| `HasUniverseMembership` | `UniverseMembership` reference data is bound; instruments are only considered in-universe during their `[added_ts, removed_ts)` window, preventing survivorship bias. |
+| `HasFeeScheduleUpdates` | A `FeeScheduleUpdate` stream is bound; the engine maintains a current fee schedule per instrument that starts from the static `fee_schedule` and is overridden by each update from its `effective_ts` forward (dynamic wins; static is the fallback). Enables accurate multi-year fee modeling. |
 
 Inverse perps (`perp_type = Inverse`) compute P&L in the base currency before USD conversion
 (see [assets/perpetuals.md](../assets/perpetuals.md) §2.5).

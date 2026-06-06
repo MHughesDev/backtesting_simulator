@@ -52,5 +52,6 @@ The strategy declares a tunable *parameter space*; concrete values/sweeps come f
 - **Negative / accepted tradeoffs:** expressiveness is bounded by built-in components +
   registered components; genuinely novel logic requires registering a component rather than
   inlining code; we must define and police the expression-vs-component boundary.
-- **Follow-ups:** component registry trust/sandbox model; expression grammar scope; the Run
-  Request schema; declarative fill-reaction model (all tracked in strategy.md §15).
+- **Follow-ups:** component registry trust/sandbox model (resolved, ADR-0011); expression grammar
+  scope and declarative fill-reaction model (tracked in strategy.md §16); the Run Request schema
+  (resolved, [run-request.md](../spec/run-request.md)).

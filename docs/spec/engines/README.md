@@ -55,16 +55,24 @@ trait Engine {
 Not all order types are valid on all engines. Attempting to use an unsupported order type
 is a contract error (not a runtime failure).
 
-| Order type | A (CLOB) | B (AMM) | C (NAV) | D (Cash Flow) | E (Deriv.) | G (Mkt) | H (Event) |
-|---|---|---|---|---|---|---|---|
-| Market | ✅ | ✅ (swap) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Limit | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Stop | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Stop-limit | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Swap (exact-in) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Swap (exact-out) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Exercise (option) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| Listing (NFT) | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| Order type | A (CLOB) | B (AMM) | C (NAV) | D (Cash Flow) | E (Deriv.) | F (OTC) | G (Mkt) | H (Event) |
+|---|---|---|---|---|---|---|---|---|
+| Market | ✅ | ✅ (swap) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Limit | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ⁱ |
+| Stop | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Stop-limit | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Swap (exact-in) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Swap (exact-out) | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Exercise (option) | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Listing (NFT) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+
+- **C (NAV)** market orders are *forward-priced* subscriptions/redemptions — accepted intraday,
+  filled at the next struck NAV, not at a price known at submission.
+- **D (Cash Flow)** and **F (OTC)** "market" orders are **dealer/bilateral** fills (quoted price ±
+  a spread), not order-book fills — there is no resting book on those engines.
+- ⁱ **H (Event) limit orders** are ❌ by default but **promote to ✅ when the instrument sets
+  `HasClob`** (liquid prediction markets such as Kalshi or major Polymarket markets run a real
+  YES/NO CLOB). See [engine-h-event-resolution.md](engine-h-event-resolution.md) §10.
 
 ## Engine composition
 

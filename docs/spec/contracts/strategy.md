@@ -42,7 +42,7 @@ around the pipeline to mutate global state or read future data.
 These are two different documents. Keeping them separate is what lets the *same* strategy run
 unchanged in backtest and live.
 
-| | **Strategy JSON** | **Run Request** *(separate spec, TBD)* |
+| | **Strategy JSON** | **Run Request** ([run-request.md](../run-request.md)) |
 |---|---|---|
 | Contains | Reusable logic: universe, features, models, alpha, sizing, risk, execution; declared *parameter space* | Concrete run context: which strategy, data source bindings, date range, starting capital, *parameter values or sweep*, RNG seed, accounting currency |
 | Lifetime | Portable; identical across backtest and live | Per-invocation |
@@ -108,10 +108,36 @@ a separate format):
 | `"feature:rsi14"` | a named feature output |
 | `"model:sentiment.value"` | a named model output field |
 | `"model:sentiment.confidence"` | a model confidence output |
-| `"signal:news_volume"` | an exogenous signal stream (see [signals.md](signals.md), TBD) |
-| `"data:close"` | a raw market-data field on the current instrument |
+| `"signal:news_volume"` | an exogenous signal stream on the current instrument (see [signals.md](signals.md)) |
+| `"data:close"` | a raw market-data field on the **current** instrument |
 | `"param:rsi_period"` | a declared parameter's value (bound by the run request) |
 | `"portfolio:position"` | current position state for the instrument |
+
+#### Cross-instrument references (analyze one asset, trade another)
+
+By default a reference resolves against the **current** instrument the pipeline is evaluating. To
+read **another instrument's** data, qualify the reference with that instrument's id:
+
+| Reference | Resolves to |
+|---|---|
+| `"data:BTC-USD@coinbase.spot.close"` | a market-data field on a **named reference instrument** |
+| `"signal:BTC-USD@coinbase.spot.news_sentiment"` | an exogenous signal on a named reference instrument |
+| `"feature:btc_lstm@BTC-USD@coinbase.spot"` | a feature computed on a named reference instrument |
+
+The named instrument must be present in the run (`instruments`) and bound with data, but it does
+**not** have to be in the traded `universe` — see **watch-vs-trade** (§6). This is what lets a
+strategy trade ETH while a model forecasts BTC: the BTC instrument is watch-only (data + signals
+bound, never traded), and the ETH pipeline reads `model:btc_forecast@BTC-USD@...` to decide its
+ETH trades. Cross-instrument references obey the same point-in-time rule (`ts_event`/`ts_available`
+≤ `current_ts`).
+
+> **Grammar note.** Instrument ids themselves contain `@` and `.` (e.g.
+> `BTC-USD@coinbase.spot`), so the qualified form must disambiguate the field from the id. The
+> reference grammar resolves this by treating the **trailing known field name** as the field and
+> the remainder as the instrument id, and field names are a closed set. The exact delimiter token
+> is a finalize-at-implementation detail (Q-STRAT-REF) — a bracketed form like
+> `data:[BTC-USD@coinbase.spot].close` is the fallback if the trailing-field rule proves
+> ambiguous.
 
 ---
 
@@ -134,20 +160,72 @@ optimization; the strategy structure itself never changes during a sweep.
 
 ## 6. `universe`
 
+The `universe` is the set of instruments the strategy **trades**. It is a subset of the
+instruments in the run.
+
+### 6.0 Watch-vs-trade (the run set vs. the traded set)
+
+- **`instruments`** (Run Request) = **every instrument with data bound** — both the ones being
+  traded and any **watch-only reference instruments** used purely for analysis.
+- **`universe`** (Strategy) = the subset actually **traded**.
+- An instrument in `instruments` but **not** in `universe` is **watch-only**: its market data and
+  signals are available to features/models/alpha via cross-instrument references (§4), but the
+  strategy never places an order on it. (Trade ETH while forecasting BTC: BTC is watch-only.)
+
+### 6.1 `static`
+
 ```jsonc
 "universe": {
   "type": "static",
   "instruments": ["AAPL@nasdaq.equity", "BTC-USD@coinbase.spot"]
 }
 ```
-or dynamic, via a registered selector component (point-in-time membership is the caller's
-responsibility — see open questions):
+
+### 6.2 `dynamic` (selector over a known set)
+
+A registered selector picks from instruments already known to the run; point-in-time membership
+is gated by `UniverseMembership` (see [market-data.md](market-data.md) §2.25):
+
 ```jsonc
 "universe": {
   "type": "dynamic",
   "selector": { "ref": "top_n_by_volume", "params": { "n": 50, "lookback": "30d" } }
 }
 ```
+
+### 6.3 `scanner` (universe-wide screen, engine-agnostic)
+
+A **scanner** surveys a whole **cohort** — a potentially large, membership-changing universe —
+and admits the instruments that meet point-in-time filter criteria. It is **not** limited to
+"new" assets and **not** crypto-specific: the same mechanism screens DEX pairs on any chain, NFT
+collections worldwide, IPOs / new equity listings, new prediction markets — any market where you
+survey many assets instead of watching one. Newness is merely one possible filter, not a
+requirement.
+
+```jsonc
+"universe": {
+  "type": "scanner",
+  "cohort": "solana_dex_pairs",          // a cohort data source bound in the Run Request (§4d)
+  "filters": [                            // point-in-time admission criteria (market data + signals)
+    { "field": "data:volume_24h",                "op": ">=", "value": "param:min_vol" },
+    { "field": "signal:market_cap",              "op": ">=", "value": "param:min_mcap" },
+    { "field": "signal:top10_holder_pct",        "op": "<=", "value": "param:max_concentration" },
+    { "field": "signal:social_score",            "op": ">=", "value": "param:min_social" }
+  ],
+  "max_active": 500,                       // optional cap on simultaneously-tracked instruments
+  "rank": { "by": "signal:social_score", "order": "desc" }   // optional cross-sectional ranking
+}
+```
+
+- Instruments are **materialized from the cohort data source** as they appear (see
+  [run-request.md](../run-request.md) §4d); they need not be enumerated in advance.
+- Filters are evaluated point-in-time (`ts_available ≤ current_ts` for signal fields) so an asset
+  is admitted only once it actually satisfies the criteria with knowable data.
+- A scanner **selects candidates; it does not by itself decide entries.** Admission produces a
+  candidate set; *when* to actually trade an admitted asset is a separate concern, handled either
+  by this strategy's own downstream stages or — preferably for "screen then time the entry" — by a
+  separate **entry strategy** wired in a **Plan** (see [plan.md](plan.md)). This is what prevents
+  buying the top just because a wide threshold was met.
 
 ---
 
@@ -190,6 +268,11 @@ stores weights and never trains unless a strategy explicitly opts in (§8.2). Se
       "price_context": "feature:vol20"
     },
     "input_window": { "lookback": "7d" },    // PIT window of data fed each inference (≤ current ts)
+
+    "context_inputs": {                      // OPTIONAL — PIT exogenous bundles assembled per call (§8.3)
+      "recent_posts": { "from": "social_x.posts", "lookback": "1h", "max_items": 200 },
+      "headlines":    { "from": "news.headlines", "lookback": "24h" }
+    },
 
     "frequency": { "every": "1d", "at": "session_open" },
     // alternatives:
@@ -252,6 +335,34 @@ the `Trainer` port, pause-train-resume, visibility, and retention — are in
   model sees at inference, never arbitrary universe data.
 - **Retention:** a run keeps exactly two artifacts — the **initial** (as passed in) and the
   **current** (latest trained); intermediates are discarded on supersession.
+
+---
+
+### 8.3 `context_inputs` — point-in-time exogenous bundles (multimodal inference)
+
+Beyond structured feature `inputs`, a model node may request **point-in-time context bundles** of
+exogenous data assembled fresh at each inference call. This is how a model runs over the news,
+social posts, images, and videos that existed at time *t* — essential for meme-coin, NFT, and
+event-driven strategies.
+
+Each `context_inputs` entry names a bound signal source/stream (from the Run Request `signals`
+block, see [run-request.md](../run-request.md) §4c) and a `lookback` window:
+
+```jsonc
+"context_inputs": {
+  "recent_posts": { "from": "social_x.posts",   "lookback": "1h", "max_items": 200 },
+  "headlines":    { "from": "news.headlines",    "lookback": "24h" },
+  "flows":        { "from": "onchain.exchange_flows", "lookback": "24h" }
+}
+```
+
+At each inference call the suite collects, from each named stream, every record with
+`ts_available ≤ current_ts` inside the window (capped by `max_items`), and hands the bundle to the
+injected `Model` port alongside the structured `inputs`. For `MediaReference`/`DocumentSignal`
+items the bundle carries **references** (URIs + modality + any pre-extracted features); the
+**injected model resolves the URIs and loads the raw bytes** — the suite never parses media.
+Look-ahead is enforced for the bundle (nothing with `ts_available > current_ts` appears), and the
+bundle is assembled deterministically. Full contract: [signals.md](signals.md) §5.
 
 ---
 
@@ -357,7 +468,7 @@ compile time. See [engines/README.md](../engines/README.md) order-type matrix.
 Even declaratively, strategies need to respond to fills, partial fills, and rejections.
 These are expressed as risk/execution rules over `portfolio:*` state (e.g. a `stop_loss_pct`
 constraint reacts to the filled position), *not* as imperative callbacks. The precise
-declarative fill-reaction model is an open question (§15).
+declarative fill-reaction model is an open question (§16).
 
 ---
 
@@ -390,17 +501,29 @@ declarative fill-reaction model is an open question (§15).
 
 ---
 
-## 15. Open questions (carried to design discussion)
+## 15. Composition: multiple strategies and the Plan
 
-- **Multi-strategy portfolios:** one run = one strategy = one portfolio, or can several
-  strategy JSONs share one capital pool with portfolio-level netting and risk?
+A single Strategy is always **one flat pipeline** — it is never nested inside another strategy
+(nesting would turn the JSON into a recursive program with control flow, which §14.1 forbids).
+When you need several strategies — a screen that hands candidates to one or more entry strategies,
+an exit manager, or simply two unrelated strategies running at once — they are composed in a
+**Plan**: a container that holds multiple strategies and wires them by **data-flow**
+(one strategy's output becomes another's `universe`/signal input), not by nesting or function
+calls. The Run Request's `strategy` field may be a single Strategy or a Plan; a single Strategy is
+the degenerate one-node Plan. Full spec: [plan.md](plan.md).
+
+---
+
+## 16. Open questions (carried to design discussion)
+
 - **Expression vs. component boundary:** how much logic is allowed in `when`/expressions
   before it must become a registered component? (Risk: JSON becoming a programming language.)
-- **Component registry trust model:** are custom components Rust (compiled), Python (PyO3), or
-  WASM? How are they sandboxed to preserve determinism and look-ahead safety?
 - **Declarative fill reactions:** the precise model for reacting to partial fills / rejections
   without imperative callbacks.
-- **Run Request schema:** the separate document binding data, dates, capital, seeds, sweeps.
 - **Model registry & reproducibility:** how the platform guarantees `model_id@version`
   resolves to identical weights at backtest time and months later.
-- **Dynamic-universe survivorship:** point-in-time index membership as a data contract.
+
+> **Resolved since first draft:** multi-strategy portfolios → the **Plan** layer ([plan.md](plan.md),
+> OD-6); component-registry trust model → tiered built-in/native/WASM ([component-registry.md](../component-registry.md),
+> ADR-0011); Run Request schema → [run-request.md](../run-request.md); dynamic-universe
+> survivorship → point-in-time `UniverseMembership` ([market-data.md](market-data.md) §2.25).
