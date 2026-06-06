@@ -79,7 +79,7 @@ Caller (trading platform or any tool)
   │
   ▼
 ┌─────────────────────────────────────────────────────────┐
-│  backtesting_suite                                      │
+│  backtesting_simulator                                  │
 │                                                         │
 │  Contract Validator                                     │
 │    ├─ Validates instrument definitions                  │

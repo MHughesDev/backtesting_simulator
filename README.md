@@ -1,110 +1,190 @@
-# backtesting_suite
+# backtesting_simulator
 
-A headless backtesting engine for testing trading strategies across digital assets —
-stocks, ETFs, spot crypto, DEX/AMM pools, futures, perpetual swaps, options, bonds,
-NFTs, prediction markets, and more.
+`backtesting_simulator` is a standalone, headless backtesting engine designed to simulate algorithmic trading strategies against historical market data across every major digital and traditional asset class. It is built as a library — a callable processing core that a trading platform, research tool, or any conforming caller passes strategies and historical data into, and receives per-trade records and performance metrics from. The engine covers eleven asset classes: equities, ETFs and mutual funds, centralized-exchange spot crypto, decentralized exchange AMM pools, expiring futures, perpetual swaps, options, fixed-income bonds, foreign exchange, NFTs, and prediction markets. Each instrument is routed to one of eight distinct execution engines selected entirely by how that instrument's price is formed — not by its asset category. The simulation is event-driven and path-dependent: historical market events are replayed in deterministic nanosecond-UTC timestamp order, and look-ahead safety is enforced structurally so a strategy cannot observe data timestamped after the current simulation clock. Each engine models the specific mechanics of its market — order book depth, queue position, and latency for exchange-traded instruments; AMM price impact computed from the constant-product or StableSwap invariant for DEX pools; funding payments and mark-price liquidation for leveraged perpetuals; forward pricing and daily NAV resets for funds; implied-volatility surface pricing with full greek computation for options; scheduled cash-flow valuation with accrued interest and day-count conventions for bonds; payoff-component-driven pricing for bilateral OTC synthetics; listing-and-sale matching for NFT collections; and binary-outcome resolution with Brier-score calibration metrics for prediction markets. The performance core is written in Rust and exposed to Python via PyO3 bindings, with Apache Arrow as the zero-copy columnar format at the language boundary.
 
-> **Status:** early design. No engine code yet. This repository currently holds the
-> architecture, data-contract design, decision records, and research that the
-> implementation will be built from. See [`docs/spec/MASTER_SPEC.md`](docs/spec/MASTER_SPEC.md).
+> **Status:** Architecture and data-contract design phase. No engine implementation code exists yet. This repository holds the full specification, all data-contract definitions, architecture decision records, and research that the implementation will be built from. See [`docs/spec/MASTER_SPEC.md`](docs/spec/MASTER_SPEC.md).
 
 ---
 
-## What this is
+## Engine Selection and Price Formation
 
-A **standalone, headless backtesting library**. It is the *processing engine* that a
-separate trading platform (or any tool with the right data contracts) calls to simulate
-strategies against historical data.
+The central design decision of this system is that **asset category does not determine how an instrument is simulated — price formation does.** The `price_formation` field on an instrument definition is the single routing point that selects which engine handles it. `BTC` traded on Binance's order book and `ETH` in a Uniswap pool are both crypto spot assets, but they form prices through fundamentally different mechanisms — a central limit order book versus an AMM invariant — and therefore use different engines. A futures contract and a stock both use Engine A because they are both traded on central limit order books; the difference in their mechanics (roll schedules, margin, funding) is handled through capability flags, not a separate engine.
 
-- **Universal** — one contract spine that spans every tradable asset class.
-- **Realistic** — event-driven, path-dependent simulation (order books, AMM slippage,
-  funding/liquidation, derivatives valuation), not just vectorized signal replay.
-- **Fast** — a Rust core for the hot loop, built to run many backtests concurrently and
-  minimize start-to-finish run latency.
-- **Embeddable** — exposed to Python (and other hosts) so a trading platform can *utilize*
-  it.
+**Capability flags** are Boolean fields on an instrument that activate specific engine mechanics. `HasFunding` activates the perpetual swap funding-rate mechanism. `HasLiquidation` activates the mark-price margin check. `HasGreeks` and `HasIVSurface` activate options-specific valuation. `HasNAV` activates NAV forward-pricing. Engines never contain `if asset_type == "futures"` branches — they check capability flags. This design keeps the engines strictly bounded and allows one instrument to compose multiple engines (an ETF, for example, executes via Engine A on the exchange and computes NAV via Engine C as a valuation layer, simultaneously).
 
-## What this is **not**
+---
 
-- **Not** a trading platform, broker, or UI. It executes no real orders.
-- **Not** a data vendor. **The suite owns no market data.** The caller supplies data that
-  satisfies the contracts; the suite validates, processes, and returns results.
-- **Not** an AI-model owner. Models are a dependency the suite *calls* through a contract;
-  it does not train or store them.
+## Execution Engines
 
-## Core design ideas
+The suite contains eight engines. Each owns exactly one price-formation mechanic. The rule for adding a new engine is: if price formation changes, build a new engine; if it stays the same and the difference is a new mechanic layered on top, add a capability flag to the existing engine.
 
-- **Asset ≠ Engine.** The asset's category does not decide how it's simulated. *Price
-  formation* does. `BTC` on a central order book and `ETH` in a Uniswap pool are both
-  crypto but use different engines. The selector is the instrument's `price_formation`
-  field, never a switch on "is this a stock."
-- **Capability flags, not type switches.** Instruments advertise capabilities
-  (`HasOrderBook`, `HasFunding`, `HasGreeks`, `HasPoolReserves`, …). Engines and strategies
-  react to capabilities, which keeps the system genuinely universal and lets one instrument
-  compose multiple engines (e.g. an ETF: order-book execution + NAV valuation).
-- **Thin required spine, opt-in everything else.** Every event shares a small required
-  envelope; the payload is one of many typed variants, gated by capability and required
-  only relative to a chosen engine/strategy.
-- **Own the contracts.** External dependencies are kept minimal and unopinionated; anything
-  that defines what a trade/price/payoff/metric *is* is built in-house. See
-  [ADR-0002](docs/adr/0002-minimal-external-dependencies.md).
+**Engine A — Order Book (`CLOB`)** is the most general-purpose engine and handles any instrument traded on a central limit order book. It reconstructs the book from historical data at one of four fidelity levels: full per-order L3 data (enabling exact queue-position reconstruction), aggregated L2 depth (exact walk-the-book slippage), best-bid-offer L1 (spread-aware fill at the touch), or OHLCV bars (fill at next-bar open, pessimistic stop fills). Fidelity level is detected from what data is supplied; a run with only daily bars produces correct but lower-accuracy fills compared to a run with tick-level order-flow data, and the difference is reported. This engine handles equities, spot crypto on centralized exchanges, spot FX, expiring futures, and perpetual swaps — six asset classes — with each using a different set of capability flags.
 
-## Tech stack
+**Engine B — AMM (`AMM`)** handles decentralized exchange pools. It computes price impact from the actual AMM math at trade time: the constant-product `x·y=k` formula for Uniswap v2, the `√P` concentrated-liquidity formula with tick-crossing iteration for Uniswap v3, and the StableSwap hybrid invariant for Curve pools. When Uniswap v3 tick data is absent, the engine falls to an approximate constant-liquidity mode and flags the result. Gas cost is a first-class P&L line — debited in the chain's native token converted to the accounting currency at the event timestamp.
 
-- **Rust** core for contracts, engines, and the run queue (safety + speed + fearless
-  parallelism). See [ADR-0001](docs/adr/0001-runtime-rust-python-hybrid.md).
-- **Python** authoring/integration layer via **PyO3 / maturin** for strategies and AI-model
-  adapters.
-- **Apache Arrow** as the zero-copy data boundary between Rust and Python (a memory
-  *format*, not a trading model).
+**Engine C — NAV (`NAV`)** handles mutual funds and provides the NAV valuation layer for ETFs. Mutual fund orders are accepted at submission time with no price and filled at the NAV struck at the end of the trading day — forward pricing, as legally required. The NAV is either supplied by the caller as an official published series or derived by the engine from a holdings snapshot and the closing prices of the underlying constituents. For leveraged and inverse ETFs, the engine simulates each day's reset individually from the leverage factor and the daily index return — it never scales cumulative returns, which would produce the wrong answer in volatile sideways markets.
 
-## Repository layout
+**Engine D — Cash Flow (`DEALER`)** handles bonds and fixed income. It prices instruments from their scheduled cash-flow stream: coupon payments plus par at maturity, discounted at yield-to-maturity (solved by Newton's method when only price is known). Accrued interest is maintained as running state and incremented daily using the instrument's day-count convention (ACT/ACT for US Treasuries, 30/360 for US corporates, ACT/360 for T-bills). Fills are executed at dirty price (clean plus accrued). Duration, modified duration, DV01, and convexity are computed from the cash flows if not supplied by the caller. Credit-rating downgrades trigger immediate repricing in strict event-timestamp order. MBS prepayment is modeled using a PSA or CPR curve that shortens the remaining cash-flow stream as rates change.
 
-```
-backtesting_suite/
-├── README.md
-├── .gitignore
-├── Cargo.toml                    # Rust workspace manifest (added when code begins)
-├── pyproject.toml                # Python packaging (added when code begins)
-│
-├── crates/                       # Rust — the performance core (owns engines + contracts)
-│   ├── contracts/                #   instrument, market-event, data-manifest types (the IP)
-│   ├── core/                     #   clock, event stream, ids, common primitives
-│   ├── engines/                  #   execution / price-formation engines A–H
-│   ├── strategy/                 #   strategy trait + execution context
-│   ├── metrics/                  #   performance & risk metrics
-│   ├── runner/                   #   single-run orchestration + the backtest queue
-│   └── pybind/                   #   PyO3 bindings (the Rust↔Python boundary)
-│
-├── python/                       # Python — authoring & integration surface
-│   └── btsuite/                  #   strategy SDK, high-level API, AI-model adapters
-│
-├── docs/                         # all documentation (see docs/ index below)
-│   ├── spec/                     #   normative specifications (MASTER_SPEC + per-area)
-│   ├── research/                 #   sources, summaries, conclusions (decision evidence)
-│   ├── adr/                      #   architecture decision records
-│   └── plans/                    #   roadmaps & implementation plans
-│
-├── examples/                     # runnable example strategies + sample data manifests
-├── benches/                      # performance benchmarks (speed is a product goal)
-├── tests/                        # cross-crate integration & contract-conformance tests
-├── fixtures/                     # tiny SYNTHETIC test data only — the suite owns no real data
-├── tools/                        # dev scripts, codegen, schema exporters
-└── .github/workflows/            # CI (build, test, lint, bench-on-PR)
-```
+**Engine E — Derivatives (`CHAIN`)** handles listed options. It prices contracts using Black-Scholes-Merton for European options and a numerical model (binomial tree, finite differences, or Barone-Adesi-Whaley — a pluggable trait, currently an open decision) for American options. The implied volatility surface (`IVSurface` payload) is required; the engine interpolates bilinearly on the log-moneyness and expiry axes at each event. Greeks — delta, gamma, vega, theta, rho — are computed at every fill and recorded in the `TradeRecord` for P&L attribution. Early-exercise and assignment are tracked per open position against the exercise boundary returned by the pricing model. The IV surface is the only hard requirement across all eleven asset classes — a run without it is rejected, not degraded.
 
-Names like `btsuite` and the `crates/*` split are provisional and will be confirmed when
-implementation begins.
+**Engine F — Synthetic (`OTC`)** handles bilateral OTC derivatives: CFDs, barrier notes, autocalls, convertible bonds, and any other contract whose value is defined by a rule over one or more underlyings. The engine is payoff-agnostic. Every synthetic instrument references a named payoff component registered in the component registry — a pure deterministic function that takes the current point-in-time values of the underlyings, the contract parameters, and accumulated path state, and returns the current mark plus updated state. Path-dependence lives in the component's state. The purity requirement enables sandboxing of untrusted or AI-authored payoff logic in a WASM runtime that has no I/O, no clock, and no network access.
 
-## Documentation index
+**Engine G — Marketplace (`MARKETPLACE`)** handles NFTs. Positions are tracked by `{collection_address, token_id}` — not by fungible quantity — because no two NFTs are interchangeable. Buy fills require that a qualifying listing actually existed in the historical data at the decision timestamp at or below the specified maximum price; no fill is invented. Sell fills match against observed historical comparable sales. Open positions are marked at collection floor price, with the engine explicitly recording that floor price is a lower bound on individual token value and not a true mark. An uncertainty report — fill rate, days-to-sell distribution, sensitivity to the sale-arrival assumption — is attached to every result.
 
-| Area | Path | Purpose |
+**Engine H — Event Resolution (`ORACLE`)** handles prediction market binary contracts. The value of a YES share is the market's implied probability of the event resolving YES, bounded to (0, 1). The engine maintains a lifecycle state machine (Created → Active → Locked → Resolved → Settled) and rejects fills once the market is Locked — a strategy cannot buy at a favorable price after information about the outcome is effectively public. Settlement is triggered by a `Resolution` event in the data, not a calendar expiry date. Brier score is the primary performance metric: `mean((entry_price − outcome)²)`, where entry price is the probability paid and outcome is 0 or 1.
+
+---
+
+## Strategy Authoring
+
+A strategy is a single JSON document that declares the complete path from data to a trade decision: universe selection, feature computation, model inference (optional), alpha signal generation, position sizing, risk constraints, and order placement. There is no alternate authoring format and no `on_event` callback that lets strategy code reach into the engine's internals.
+
+Each stage of the pipeline produces named values that downstream stages bind to by name. The binding is explicit in the JSON: a sizing stage references `alpha.signal` by that exact name, not by position. This makes the data flow inspectable and verifiable before a run executes.
+
+Extensibility is provided by the **component registry**: a tiered store of named, typed, reusable code components. Built-in components (indicators, sizing functions, selectors, risk checks) are compiled into the Rust core. Trusted native components can be registered by the caller. Untrusted or AI-authored components run in a sandboxed WASM runtime that enforces purity — no I/O, no system clock, no network access. Strategies reference components by ID; the logic lives in the registry, not in the JSON.
+
+The **Run Request** is the per-invocation document kept separate from the strategy JSON. It binds the strategy to concrete historical data sources (as typed Apache Arrow IPC files), sets the simulation date range, specifies starting capital, provides the RNG seed for any stochastic components, and supplies concrete values (or a sweep range) for any parameters declared in the strategy. Separating strategy from run configuration is what allows the same strategy JSON to run unchanged in backtest and live — the trading platform swaps the data bindings and the suite's behavior is otherwise identical.
+
+---
+
+## Multi-Strategy Composition
+
+A **Plan** is the layer above a single strategy. It composes two or more flat strategies by data-flow or runs them concurrently without nesting them inside each other. The two topologies are:
+
+- **Screen → Entry → Exit pipeline:** a `selector` strategy screens a large universe of candidates by point-in-time market data and signal filters; an `entry` strategy times the actual trade on selected candidates; an optional `exit` strategy manages the close independently. Each is a separate flat strategy with a declared role — `selector`, `entry`, `exit`, or `standalone`.
+- **Concurrent independent strategies:** multiple strategies run simultaneously sharing one injected `Account` (shared mode, where positions net together) or each drawing from an isolated capital partition (isolated mode).
+
+When strategies in a Plan attempt conflicting actions on the same instrument, the Plan's `conflict_policy` resolves it. Universe-scanning Plans use a **cohort data source** — a market-wide feed that materializes instruments dynamically as they appear (new DEX pairs, newly listed tokens, live NFT collections) rather than requiring the full universe to be defined upfront.
+
+---
+
+## Data Architecture
+
+Every data type the suite can ingest belongs to one of three planes. The plane determines how the data can be used.
+
+**Market-Data Plane** contains prices, order books, pool state, funding rates, and all other data the engine computes fills against. It is the only plane that can set a fill price. It is governed by `ts_event` — when the market event actually occurred.
+
+**Exogenous-Signal Plane** contains external information that informs a strategy's decisions: news, social sentiment, macro indicators, on-chain analytics, earnings estimates, credit ratings, and multimodal media references (text, images, video passed to an AI model). Data in this plane can change what a strategy decides to do. It cannot set a fill price. It is governed by `ts_available` — when the strategy could first have known the information — which accounts for publication lag. A merger announced before it becomes effective has `ts_event = closing date` and `ts_available = announcement date`. A regulatory filing dated to a quarter-end but published weeks later has `ts_available = publication date`. Using `ts_event` for exogenous data would introduce systematic look-ahead.
+
+**Operational / Meta Plane** contains records the suite emits about its own run: lineage, warnings, per-decision audit entries, degraded-fidelity flags.
+
+The suite is **venue-neutral**: it recognizes normalized payload types, never vendor feed dialects. A caller-owned adapter translates any vendor or source feed into the suite's typed payloads before the data reaches the engine. This is what keeps the core small and universal.
+
+---
+
+## Look-Ahead Safety
+
+Look-ahead bias — a strategy observing data dated after the current simulation clock — is the most consequential correctness error in backtesting. The suite enforces look-ahead prevention structurally in three ways. First, the event-replay clock is monotonically ordered: an event at `ts_event = T` is processed before any event at `ts_event > T`, and no strategy accessor can observe a later timestamp. Second, exogenous signals use `ts_available` as their look-ahead clock, not `ts_event`, so publication lag is respected. Third, AI model inference is bounded: a model can only observe features whose source data has `ts_event ≤ current_ts`, and the training mechanic — pause the simulation clock, train on point-in-time data, swap the model artifact, resume — prevents any future data from entering a model's training window.
+
+A strategy also cannot fill at the price it observed at decision time for bar-fidelity data. A market order generated by observing a bar close fills at the next bar's open, not the close — because the close price was not yet known at the time the decision was logically made. The engine enforces this by default and reports any configuration that would produce fill-at-close as a contract error.
+
+---
+
+## Concurrency and the Run Queue
+
+Submitting multiple backtests in a single call — parameter sweeps, multi-asset runs, walk-forward windows — is a first-class concern of the suite. The run queue dispatches individual runs to a work-stealing thread pool. All engine state is `Send + Sync`: there are no shared mutable data structures across runs, and the Python GIL is not held during engine execution. This allows N concurrent backtests to run in parallel bounded only by the available CPU cores on the host machine.
+
+The suite stores no state between invocations. There is no session, no database, and no persistence. Each Run Request is self-contained: it wires in all data bindings, all injected ports, and all parameters for that run, and is discarded when the run completes. This is what makes the suite a library rather than a service.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Role |
 |---|---|---|
-| Master spec | [`docs/spec/MASTER_SPEC.md`](docs/spec/MASTER_SPEC.md) | High-level, end-to-end system overview |
-| Research | [`docs/research/`](docs/research/) | Sources, summaries, and conclusions behind decisions |
-| Decisions | [`docs/adr/`](docs/adr/) | Architecture Decision Records (the "why") |
-| Plans | [`docs/plans/`](docs/plans/) | Roadmaps and implementation plans |
-| Open questions | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | The full design backlog (blocking + exploratory) |
+| Performance core | **Rust** | Contracts, engines, event clock, run queue. Enforces data-race freedom and runs without GIL. |
+| Language boundary | **PyO3 / maturin** | Exposes the Rust core as a native Python extension module. |
+| Data transfer format | **Apache Arrow IPC** | Zero-copy columnar format used at the Rust↔Python boundary and for all data file bindings in the Run Request. |
+| Strategy authoring | **Python + JSON** | Python is used to construct strategy JSON and Run Request documents; the suite validates and executes them. |
+| Sandboxed components | **WebAssembly (WASM)** | Untrusted or AI-authored payoff components and custom indicators run in a WASM runtime with no I/O, clock, or network access. |
+
+---
+
+## Supported Markets and Asset Classes
+
+The table below lists every market the suite is designed to simulate, the normalized market-data payload types that engine reads for that market, the engine that handles it, and a description of what that market is and how it operates.
+
+| Asset Class | Sub-types | Core Market Data Payloads | Engine | Market Description |
+|---|---|---|---|---|
+| **Equities** | Common stocks, REITs, ADRs, tokenized stocks | `Bar`, `Trade`, `Quote`, `BookSnapshot`, `BookDelta`, `OrderBookOrderEvent`, `CorporateAction`, `BorrowRate`, `TradingStatus`, `UniverseMembership` | A — Order Book | Exchange-listed shares of ownership in a company. Price is formed by resting bids and offers on a central limit order book. Corporate events (dividends, stock splits, mergers) create price discontinuities that require separate adjusted and unadjusted price series: the adjusted series is used for signal computation; unadjusted prices are used for fills and P&L. |
+| **ETFs & Funds** | ETFs, ETNs, inverse/leveraged ETFs, mutual funds | `Bar`, `Trade`, `Quote`, `Nav`, `HoldingsSnapshot`, `CreationRedemptionBasket` | A + C (ETFs); C only (mutual funds) | Pooled investment vehicles that hold a basket of underlying assets. ETFs trade intraday on a central limit order book (Engine A) while their net asset value is computed separately from the underlying holdings (Engine C). Mutual funds are not exchange-traded; orders receive the NAV computed at market close — the fill price is unknown at order submission. Leveraged and inverse ETFs apply a leverage factor to the daily index return and reset the leverage daily, not cumulatively. |
+| **Crypto Spot (CEX)** | BTC, ETH, altcoins, stablecoins on centralized exchanges | `Bar`, `Trade`, `Quote`, `BookSnapshot`, `BookDelta`, `OrderBookOrderEvent`, `TokenEvent`, `FeeScheduleUpdate` | A — Order Book | Spot trading of cryptographic tokens on centralized exchange order books. Mechanics are functionally identical to equities on an order book, with the addition of token-specific events (forks, airdrops) and tiered maker/taker fee schedules that change with 30-day trading volume. |
+| **DEX / AMM** | Uniswap v2/v3, Curve, Raydium, stablecoin pools | `PoolState`, `SwapEvent`, `GasEvent` | B — AMM | Decentralized exchange liquidity pools governed by a deterministic mathematical formula rather than an order book. Price and execution are computed from the pool's reserve balances at trade time. There is no counterparty and no bid-ask spread in the conventional sense. Slippage is exact and calculable from the formula: larger trades relative to pool depth produce worse execution prices. Gas fees are a first-class cost denominated in the chain's native token. |
+| **Futures (expiring)** | Equity index, commodity, energy, rate, crypto futures | `Bar`, `Trade`, `Quote`, `BookSnapshot`, `BookDelta`, `RollSchedule`, `OpenInterest`, `TradingStatus` | A — Order Book | Standardized contracts obligating the buyer to purchase and the seller to deliver an underlying asset at a fixed price on a specified expiry date. Traded on central limit order books. As contracts approach expiry, open positions must be rolled to the next contract to maintain continuous exposure — the cost or benefit of this roll depends on whether the market is in contango (back month more expensive) or backwardation (back month cheaper). A continuous price series is constructed for signal computation from the per-contract unadjusted prices. |
+| **Perpetual Swaps** | Linear (USDT-margined), inverse (coin-margined) perps | `Bar`, `Trade`, `Quote`, `BookSnapshot`, `Funding`, `MarkUpdate` | A — Order Book | Futures-like derivatives with no expiry date, traded on centralized crypto exchanges. A funding-rate mechanism — applied every 8 hours — pays longs to shorts or shorts to longs based on the spread between the perpetual price and the spot index, keeping the contract anchored to the underlying. Leveraged positions are subject to force liquidation if unrealized losses erode collateral below the maintenance margin threshold; the liquidation price is computed from the mark price, not the last trade, to prevent single-print manipulation. |
+| **Options** | Equity, ETF, index, crypto options; warrants | `Bar`, `Quote`, `IVSurface`, `Greeks`, `ExerciseEvent` (underlying data also required) | E — Derivatives | Contracts giving the holder the right but not the obligation to buy (call) or sell (put) an underlying asset at a fixed strike price on or before expiry. Priced from the implied volatility surface — the market's consensus on expected future realized volatility across strikes and expiries. Delta, gamma, vega, theta, and rho are computed at every event. American options require numerical methods for early-exercise valuation. Short option positions require margin and are subject to assignment. |
+| **Bonds & Fixed Income** | US Treasuries, corporate bonds, municipal bonds, MBS, CDs | `Bar`, `Mark`, `YieldUpdate`, `YieldCurve`, `CreditSpread`, `CreditRatingEvent`, `Coupon` | D — Cash Flow | Debt instruments issued by governments, municipalities, or corporations. The holder receives periodic coupon payments and par value at maturity. Price is the present value of future cash flows discounted at the prevailing yield. Traded OTC between dealers rather than on an exchange, with quoted bid/ask spreads that vary by liquidity tier. Accrued interest is computed daily under the instrument's day-count convention and must be separated from quoted clean price to compute the actual purchase cost. Credit-rating changes and yield-curve movements cause repricing. |
+| **FX** | Major pairs (EUR/USD, USD/JPY), minor and exotic pairs | `Bar`, `Trade`, `Quote`, `BookSnapshot`, `SwapRate`, `TradingStatus` | A — Order Book | Exchange rates between currency pairs, traded on electronic communication networks with continuous 24-hour liquidity during the trading week. Spot FX settles T+2; holding a position overnight triggers a rollover at the overnight interest rate differential between the two currencies (the swap rate). Long positions in the higher-yielding currency earn positive carry; short positions pay it. Wednesday's rollover carries three days of interest to cover the weekend. |
+| **NFTs** | ERC-721 tokens, SPL NFTs, Ethereum and Solana collections | `NftEvent`, `FloorUpdate`, `NftBidEvent`, `GasEvent` | G — Marketplace | Non-fungible tokens: unique digital assets on a blockchain, where each token has a distinct identity and potentially distinct value based on its traits. There is no fungible quantity — each token is its own position. The market structure is listing-based: sellers post tokens at fixed prices; buyers select specific listed tokens. Between sales, a token has no verifiable individual price; positions are marked at the collection floor price (the lowest listed ask). Data is sparse relative to other asset classes: a given token may trade once per week at best, which limits fill-model accuracy. |
+| **Prediction Markets** | Binary event contracts (Polymarket, Kalshi) | `Bar`, `Quote`, `BookSnapshot`, `Resolution`, `MarketLifecycleEvent`, `OracleEvent` | H — Event Resolution | Markets where contracts pay $1 if a specified real-world event occurs and $0 if it does not. The price of a contract is the market's implied probability of the event resolving YES, bounded strictly to (0, 1). Trading ceases when the market reaches the Locked state as the outcome becomes imminent. Settlement is triggered by an oracle reporting the result, not by a calendar date. The primary performance metric is Brier score — a calibration measure of whether the probabilities implied by entry prices matched actual outcome frequencies. |
+
+---
+
+## Documentation Index
+
+| Document | Path | Description |
+|---|---|---|
+| **Master Specification** | [`docs/spec/MASTER_SPEC.md`](docs/spec/MASTER_SPEC.md) | End-to-end system overview: principles, system map, asset taxonomy, contracts, engines, run queue, integration boundary, performance approach, open decisions, and glossary. The entry point for understanding the full system. |
+| **Engine Deep Dive** | [`docs/spec/ENGINE_DEEP_DIVE.md`](docs/spec/ENGINE_DEEP_DIVE.md) | Full engineering reference for all eight engines. For each engine: how the real-world market works, how the engine replicates those mechanics, what makes this engine unique, and the exact data contract (instrument fields, required payloads, Run Request bindings, error conditions). Also contains the Run Request line-by-line reference. |
+| **Data Taxonomy** | [`docs/spec/DATA_TAXONOMY.md`](docs/spec/DATA_TAXONOMY.md) | Complete map of every data type the suite can ingest, organized by the three planes (Market-Data, Exogenous-Signal, Operational/Meta). Documents the two look-ahead clocks (`ts_event` vs. `ts_available`), the core event envelope, and the venue-neutral normalization model. |
+| **Run Request** | [`docs/spec/run-request.md`](docs/spec/run-request.md) | Line-by-line specification of the per-invocation document that binds a strategy to data, a time window, parameters, and all injected ports for a single run. |
+| **Runner** | [`docs/spec/runner.md`](docs/spec/runner.md) | Run queue and execution model specification. |
+| **Component Registry** | [`docs/spec/component-registry.md`](docs/spec/component-registry.md) | Specification of the tiered component registry: built-in Rust components, trusted native components, and sandboxed WASM components. Trust model, registration, and the expression-vs-component boundary. |
+| **Contracts index** | [`docs/spec/contracts/README.md`](docs/spec/contracts/README.md) | Index and readiness matrix for all contracts. |
+| **Instrument Contract** | [`docs/spec/contracts/instrument.md`](docs/spec/contracts/instrument.md) | Instrument identity, venue, `price_formation` field (the engine-routing decision), capability flags, and metadata fields. The router of the entire system. |
+| **Market Data Contract** | [`docs/spec/contracts/market-data.md`](docs/spec/contracts/market-data.md) | Market-Data Plane payload variants: all typed event payloads (bars, trades, quotes, book snapshots, pool state, funding, etc.) and the rules for which are valid for which instruments. |
+| **Signals Contract** | [`docs/spec/contracts/signals.md`](docs/spec/contracts/signals.md) | Exogenous-Signal Plane: news, social, macro, on-chain analytics, media references. `ts_available` look-ahead enforcement. Multi-source binding. Multimodal model bundle assembly. |
+| **Strategy Contract** | [`docs/spec/contracts/strategy.md`](docs/spec/contracts/strategy.md) | JSON declarative strategy pipeline specification: all pipeline stages, how values bind between stages, parameter declaration, and the component registry integration. |
+| **Plan Contract** | [`docs/spec/contracts/plan.md`](docs/spec/contracts/plan.md) | Multi-strategy composition: screen→entry→exit pipeline topology, concurrent independent strategies, `account_mode` (shared vs. isolated), `conflict_policy`, and cohort universe scanning. |
+| **Model Contract** | [`docs/spec/contracts/model.md`](docs/spec/contracts/model.md) | AI/ML inference interface (the Model port): look-ahead safety for model features, inference-only scope, and model-id versioning. |
+| **Training Contract** | [`docs/spec/contracts/training.md`](docs/spec/contracts/training.md) | Opt-in point-in-time (re)training via the injected `Trainer` port: pause-train-resume mechanic, refit cache, walk-forward window logic. |
+| **Metrics Contract** | [`docs/spec/contracts/metrics.md`](docs/spec/contracts/metrics.md) | Per-trade `TradeRecord` stream and aggregate metrics contract. *(deferred)* |
+| **Engines index** | [`docs/spec/engines/README.md`](docs/spec/engines/README.md) | Engine selection rules, the `price_formation` routing table, and composition rules. |
+| **Engine A — Order Book** | [`docs/spec/engines/engine-a-order-book.md`](docs/spec/engines/engine-a-order-book.md) | Order Book engine: fidelity ladder (L1/L2/L3/bar), latency model, capability extensions (funding, liquidation, roll schedules, swap rates, corporate actions, token events). |
+| **Engine B — AMM** | [`docs/spec/engines/engine-b-amm.md`](docs/spec/engines/engine-b-amm.md) | AMM engine: constant-product and StableSwap invariants, Uniswap v3 concentrated liquidity with tick crossing, working-copy isolation model, gas P&L. |
+| **Engine C — NAV** | [`docs/spec/engines/engine-c-nav.md`](docs/spec/engines/engine-c-nav.md) | NAV engine: mutual fund forward pricing, holdings-derived NAV computation, ETF premium/discount, leveraged/inverse daily reset. |
+| **Engine D — Cash Flow** | [`docs/spec/engines/engine-d-cashflow.md`](docs/spec/engines/engine-d-cashflow.md) | Cash Flow engine: YTM solve, duration/DV01/convexity, accrued interest, day-count conventions, dealer fill model, credit-rating repricing, MBS prepayment. |
+| **Engine E — Derivatives** | [`docs/spec/engines/engine-e-derivatives.md`](docs/spec/engines/engine-e-derivatives.md) | Derivatives engine: BSM and numerical American pricing, IV surface interpolation, greek computation, early-exercise/assignment state machine, short-option margin. |
+| **Engine F — Synthetic** | [`docs/spec/engines/engine-f-synthetic.md`](docs/spec/engines/engine-f-synthetic.md) | Synthetic engine: payoff-component model, barrier and autocall state machines, CFD overnight financing, WASM sandboxing for untrusted payoff components. |
+| **Engine G — Marketplace** | [`docs/spec/engines/engine-g-marketplace.md`](docs/spec/engines/engine-g-marketplace.md) | Marketplace engine: per-token position accounting, listing-based buy execution, conservative comparable-sale sell fills, floor-price marking, uncertainty disclosure. |
+| **Engine H — Event Resolution** | [`docs/spec/engines/engine-h-event-resolution.md`](docs/spec/engines/engine-h-event-resolution.md) | Event Resolution engine: lifecycle state machine, probability-bounded trading, binary payoff, oracle-driven settlement, Brier-score metrics, oracle risk modeling. |
+| **Assets index** | [`docs/spec/assets/README.md`](docs/spec/assets/README.md) | Asset taxonomy overview: all eleven asset classes and their relationship to engines. |
+| **Equities spec** | [`docs/spec/assets/equities.md`](docs/spec/assets/equities.md) | Equities: data requirements, two-series constraint (adjusted vs. unadjusted), corporate actions, short-borrow rates, survivorship bias. |
+| **ETFs & Funds spec** | [`docs/spec/assets/etfs.md`](docs/spec/assets/etfs.md) | ETFs and mutual funds: Engine A + C composition for ETFs, forward pricing for mutual funds, leveraged/inverse mechanics. |
+| **Crypto Spot (CEX) spec** | [`docs/spec/assets/crypto-spot-cex.md`](docs/spec/assets/crypto-spot-cex.md) | Centralized-exchange spot crypto: fee schedules, token events, fidelity ladder. |
+| **DEX / AMM spec** | [`docs/spec/assets/dex-amm.md`](docs/spec/assets/dex-amm.md) | DEX AMM pools: pool variants, reserve data, gas modeling, liquidity provision mechanics. |
+| **Futures spec** | [`docs/spec/assets/futures.md`](docs/spec/assets/futures.md) | Expiring futures: roll schedules, continuous series construction methods, open interest. |
+| **Perpetuals spec** | [`docs/spec/assets/perpetuals.md`](docs/spec/assets/perpetuals.md) | Perpetual swaps: funding mechanics, mark price, linear vs. inverse contract types, liquidation. |
+| **Options spec** | [`docs/spec/assets/options.md`](docs/spec/assets/options.md) | Options: IV surface requirement, American vs. European exercise, listed vs. OTC, margins. |
+| **Bonds spec** | [`docs/spec/assets/bonds.md`](docs/spec/assets/bonds.md) | Bonds and fixed income: Treasuries, corporate bonds, MBS, CDs; yield curve data; day-count conventions. |
+| **FX spec** | [`docs/spec/assets/fx.md`](docs/spec/assets/fx.md) | Foreign exchange: swap rates, Wednesday triple-rollover, session-based liquidity windows. |
+| **NFTs spec** | [`docs/spec/assets/nfts.md`](docs/spec/assets/nfts.md) | NFTs: non-fungible position model, listing data, floor price marking, rarity scores. |
+| **Prediction Markets spec** | [`docs/spec/assets/prediction-markets.md`](docs/spec/assets/prediction-markets.md) | Prediction markets: binary contracts, Polymarket/Kalshi mechanics, resolution oracles. |
+| **Architecture Decision Records** | [`docs/adr/`](docs/adr/) | All ADRs in MADR format. Each records a binding architectural decision: the context, the decision taken, and the alternatives considered. |
+| ADR-0001 | [`docs/adr/0001-runtime-rust-python-hybrid.md`](docs/adr/0001-runtime-rust-python-hybrid.md) | Why the performance core is Rust with a Python authoring layer, rather than pure Python or a different hybrid. |
+| ADR-0002 | [`docs/adr/0002-minimal-external-dependencies.md`](docs/adr/0002-minimal-external-dependencies.md) | Policy to own all contracts and core mechanics in-house rather than depending on external financial libraries. |
+| ADR-0003 | [`docs/adr/0003-capability-based-instrument-model.md`](docs/adr/0003-capability-based-instrument-model.md) | Why engine routing uses capability flags rather than asset-type switches. |
+| ADR-0004 | [`docs/adr/0004-strategy-json-pipeline.md`](docs/adr/0004-strategy-json-pipeline.md) | Why strategies are a single declarative JSON pipeline rather than imperative callback code. |
+| ADR-0005 | [`docs/adr/0005-strategy-not-stored-suite-is-a-library.md`](docs/adr/0005-strategy-not-stored-suite-is-a-library.md) | Why the suite stores nothing and the trading platform owns all persistent state. |
+| ADR-0006 | [`docs/adr/0006-model-inference-and-training.md`](docs/adr/0006-model-inference-and-training.md) | Scope and design of AI/ML model integration: inference-only port, injected Trainer, no model weights stored. |
+| ADR-0007 | [`docs/adr/0007-shared-training-pipeline-port.md`](docs/adr/0007-shared-training-pipeline-port.md) | Why the training implementation lives in a shared package rather than in the suite. |
+| ADR-0008 | [`docs/adr/0008-training-scope-method-visibility-retention.md`](docs/adr/0008-training-scope-method-visibility-retention.md) | What the suite controls during retraining vs. what the injected Trainer controls. |
+| ADR-0009 | [`docs/adr/0009-end-state-system-no-mvp.md`](docs/adr/0009-end-state-system-no-mvp.md) | Decision to specify and build the full end-state system (all assets, all eight engines) rather than a reduced MVP. |
+| ADR-0010 | [`docs/adr/0010-suite-does-not-own-portfolio.md`](docs/adr/0010-suite-does-not-own-portfolio.md) | Why the suite operates on a per-trade model and the portfolio ledger is an injected caller-owned port. |
+| ADR-0011 | [`docs/adr/0011-component-registry-trust-model.md`](docs/adr/0011-component-registry-trust-model.md) | The tiered trust model for components: built-in, trusted native, and WASM-sandboxed untrusted. |
+| ADR-0012 | [`docs/adr/0012-standalone-contracts-kernel.md`](docs/adr/0012-standalone-contracts-kernel.md) | Why the shared cross-boundary contract types are a standalone dependency-free kernel. |
+| **Research** | [`docs/research/`](docs/research/) | Primary sources, summaries, and conclusions backing the architecture decisions. |
+| Runtime selection conclusion | [`docs/research/conclusions/0001-runtime-selection.md`](docs/research/conclusions/0001-runtime-selection.md) | Final conclusion from the Rust vs. Python vs. hybrid runtime evaluation. |
+| Engine audit conclusion | [`docs/research/conclusions/0002-engine-audit.md`](docs/research/conclusions/0002-engine-audit.md) | Audit of engine design against real-world trading mechanics across all asset classes. |
+| Runtime language tradeoffs | [`docs/research/summaries/0001-runtime-language-tradeoffs.md`](docs/research/summaries/0001-runtime-language-tradeoffs.md) | Summary of the runtime language tradeoff analysis. |
+| Runtime language sources | [`docs/research/sources/0001-runtime-language.md`](docs/research/sources/0001-runtime-language.md) | Primary sources consulted for the runtime language decision. |
+| Asset trading mechanics sources | [`docs/research/sources/0002-asset-trading-mechanics.md`](docs/research/sources/0002-asset-trading-mechanics.md) | Primary sources on real-world trading mechanics for each asset class. |
+| **Implementation Plans** | [`docs/plans/`](docs/plans/) | Roadmaps and staged implementation plans. |
+| MVP roadmap | [`docs/plans/0001-mvp-roadmap.md`](docs/plans/0001-mvp-roadmap.md) | Staged implementation roadmap. |
+| **Open Questions** | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | Full design backlog: blocking decisions that gate implementation and exploratory questions under active consideration. |
+
+---
 
 ## License
 
