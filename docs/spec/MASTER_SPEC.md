@@ -158,36 +158,44 @@ outputs. Detailed specifications live in `spec/contracts/` and the top-level spe
 [run-request.md](run-request.md), [component-registry.md](component-registry.md),
 [DATA_TAXONOMY.md](DATA_TAXONOMY.md), and [ENGINE_DEEP_DIVE.md](ENGINE_DEEP_DIVE.md).
 
-| Contract | Role | Spec |
-|---|---|---|
-| **Instrument** | Identity, venue, `price_formation` (engine selector), capabilities, metadata | [contracts/instrument.md](contracts/instrument.md) |
-| **Market Data** | Universal envelope + typed, capability-gated payload variants (Market-Data Plane) | [contracts/market-data.md](contracts/market-data.md) |
-| **Signals** | Exogenous-Signal Plane: news/social/macro/media; `ts_available` look-ahead; multi-source binding; multimodal model bundles | [contracts/signals.md](contracts/signals.md) |
-| **Strategy** | Single JSON declarative pipeline (universe→features→models→alpha→sizing→risk→execution) | [contracts/strategy.md](contracts/strategy.md) |
-| **Plan** | Multi-strategy composition: screen→entry→exit by data-flow, or concurrent independents; `account_mode`, `conflict_policy` | [contracts/plan.md](contracts/plan.md) |
-| **Model** (port) | AI/ML inference interface; look-ahead safety; injected | [contracts/model.md](contracts/model.md) |
-| **Training** (`Trainer` port) | Opt-in PIT (re)training; pause-train-resume; injected | [contracts/training.md](contracts/training.md) |
-| **Account** (port) | Caller-owned ledger the suite queries; **no assumed portfolio** | [run-request.md](run-request.md) §5 |
-| **Run Request** | Per-invocation binding of data, time, parameters, ports, output | [run-request.md](run-request.md) |
-| **Component Registry** | Built-in / native / WASM components strategies wire together | [component-registry.md](component-registry.md) |
-| **Result / Metrics** | Per-trade `TradeRecord` stream; aggregate metrics downstream | [contracts/metrics.md](contracts/metrics.md) *(deferred)* |
+| Contract | Role | Spec | Status |
+|---|---|---|---|
+| **Instrument** | Identity, venue, `price_formation` (engine selector), capabilities, metadata | [contracts/instrument.md](contracts/instrument.md) | ✅ Defined |
+| **Market Data** | Universal envelope + typed, capability-gated payload variants (Market-Data Plane) | [contracts/market-data.md](contracts/market-data.md) | ✅ Defined |
+| **Signals** | Exogenous-Signal Plane: news/social/macro/media; `ts_available` look-ahead; multi-source binding; multimodal `MediaReference` model bundles | [contracts/signals.md](contracts/signals.md) | ✅ Defined |
+| **Strategy** | Single JSON declarative pipeline (universe→features→models→alpha→sizing→risk→execution); cross-instrument references (`data:`, `signal:`, `feature:`); scanner universe for cohorts | [contracts/strategy.md](contracts/strategy.md) | ✅ Defined |
+| **Plan** | Multi-strategy composition: screen→entry→exit by data-flow, or concurrent independents; `account_mode` (shared/isolated), `conflict_policy` (net/priority/reject) | [contracts/plan.md](contracts/plan.md) | ✅ Defined |
+| **Model** (port) | AI/ML inference interface; look-ahead safety; injected; multimodal context bundles from signals | [contracts/model.md](contracts/model.md) | ✅ Defined |
+| **Training** (`Trainer` port) | Opt-in PIT (re)training; pause-train-resume; walk-forward + refit cache; injected | [contracts/training.md](contracts/training.md) | ✅ Defined |
+| **Account** (port) | Caller-owned ledger the suite queries; **no assumed portfolio** | [run-request.md](run-request.md) §5 | ✅ Defined |
+| **Run Request** | Per-invocation binding of data (event streams + reference data), time, parameters, ports, output; data manifest validation | [run-request.md](run-request.md) | ✅ Defined |
+| **Component Registry** | Built-in / native / WASM components strategies wire together; trust tiers (Rust / trusted native / WASM sandbox) | [component-registry.md](component-registry.md) | ✅ Defined |
+| **Result / Metrics** | Per-trade `TradeRecord` stream; aggregate metrics (returns, Sharpe, drawdown, greeks attribution, etc.); injected `Account` for ledger | [contracts/metrics.md](contracts/metrics.md) | 🔲 Deferred |
 
 Data is organized into **three planes** — the Market-Data Plane (what engines fill against), the
 Exogenous-Signal Plane (news/social/macro/media that inform decisions but never set a fill price,
 governed by a `ts_available` clock), and the Operational/Meta Plane (records the suite emits). The
 complete venue-neutral data model is in [DATA_TAXONOMY.md](DATA_TAXONOMY.md).
 
+**Event streams vs. reference data:** Bindings carry a `binding_type` field. Event streams replay
+through the clock (Market Data, Signals, corporate actions); reference data is loaded once and
+queried point-in-time by `effective_ts` + `knowable_ts` (e.g., credit spreads, credit ratings,
+roll schedules, exchange calendars). See [run-request.md](run-request.md) §4.
+
 Strategies run in two **topologies**, both on the same Run Request and the same engines:
 
 1. **Single / multi-asset** — trade one or a few named instruments, optionally analyzing
    **watch-only** reference instruments (e.g. trade ETH while a model forecasts BTC). The traded
    set (`universe`) is a subset of the run's `instruments`; cross-instrument references
-   (`data:<instrument>.field`) read the watch-only ones.
+   read the watch-only ones via `data:<instrument>.field` (market data), `signal:<instrument>.<id>`
+   (signals), or `feature:<id>@<instrument>` (computed features). [contracts/strategy.md](contracts/strategy.md) §4.
 2. **Universe-wide scan (cohort)** — survey a large, membership-changing universe (DEX pairs on a
-   chain, NFT collections, new listings, prediction markets) via a `scanner` universe over a
+   chain, NFT collections, IPOs, prediction markets) via a `scanner` universe over a
    **cohort data source** that materializes instruments point-in-time. A `selector` strategy screens
-   candidates; one or more `entry` strategies time the actual trades — composed in a **Plan**
-   ([contracts/plan.md](contracts/plan.md)), never nested.
+   candidates by market-data + signal filters (engine-agnostic); one or more `entry` strategies time
+   the actual trades — composed in a **Plan** ([contracts/plan.md](contracts/plan.md)) by data-flow
+   (screen→entry→exit), never nested. Multi-strategy Plans support `account_mode` (shared/isolated
+   capital) and `conflict_policy` (net/priority/reject for opposing intents on one asset).
 
 Contracts overview: [contracts/README.md](contracts/README.md). Full spec index & readiness:
 [spec/README.md](README.md).
@@ -281,21 +289,29 @@ simulates, so a strategy behaves identically in backtest and live.
 The table below is the **blocking** subset. The full design backlog — blocking and
 exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 
-| # | Decision | Where it blocks |
-|---|---|---|
-| ~~OD-1~~ | ~~MVP engine scope~~ → **Resolved:** no MVP; specify & build the **end-state** system (all assets, all 8 engines) | [ADR-0009](../adr/0009-end-state-system-no-mvp.md) |
-| OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `spec/runner.md` |
-| ~~OD-8~~ | ~~Run Request schema~~ → **Resolved:** defined | [run-request.md](run-request.md) |
-| ~~Q-ACCT-1~~ | ~~Does the suite own the portfolio ledger?~~ → **Resolved:** no; per-trade model + injected `Account` | [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md) |
-| OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | `ADR-0002` |
-| OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | `spec/engines/engine-e-derivatives.md` |
-| ~~OD-5~~ | ~~Strategy-authoring form~~ → **Resolved:** single JSON declarative pipeline + component registry; no `on_event` blob | [ADR-0004](../adr/0004-strategy-json-pipeline.md) |
-| ~~OD-6~~ | ~~Multi-strategy portfolios~~ → **Resolved:** the **Plan** layer — flat strategies composed by data-flow; `account_mode` (shared/isolated) + `conflict_policy` | [contracts/plan.md](contracts/plan.md) |
-| ~~OD-7~~ | ~~Component registry trust model~~ → **Resolved:** tiered (built-in / native / WASM sandbox for untrusted) | [ADR-0011](../adr/0011-component-registry-trust-model.md) |
-| OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | `spec/component-registry.md` §9 |
-| OD-10 | Model registry & reproducibility: stable `model_id@version` resolution over time | `spec/contracts/model.md` §8 |
-| ~~OD-11~~ | ~~Shared-contracts repo topology~~ → **Resolved:** standalone dependency-free kernel; build now, extract later | [ADR-0012](../adr/0012-standalone-contracts-kernel.md) |
-| OD-12 | Validation gating of freshly trained artifacts (reject-and-keep-incumbent policy) | `spec/contracts/training.md` §8 |
+**Recent resolutions (2026-06):** The AA (market-data depth/derivation) and BB (multi-asset/scanning)
+batches resolved 16 new payload types, 11 capability flags, cross-instrument references, scanner
+universes, cohort data sources, the Plan multi-strategy layer, signal `ts_available` look-ahead,
+and `MediaReference` multimodal model bundles. These are fully specified in [DATA_TAXONOMY.md](DATA_TAXONOMY.md),
+[contracts/market-data.md](contracts/market-data.md), [contracts/instrument.md](contracts/instrument.md),
+[contracts/strategy.md](contracts/strategy.md), [contracts/signals.md](contracts/signals.md),
+[contracts/plan.md](contracts/plan.md), and [run-request.md](run-request.md).
+
+| # | Decision | Where it blocks | Status |
+|---|---|---|---|
+| ~~OD-1~~ | ~~MVP engine scope~~ | [ADR-0009](../adr/0009-end-state-system-no-mvp.md) | ✅ Resolved |
+| OD-2 | Run-queue boundary: how much orchestration lives in suite vs. platform | `spec/runner.md` | ⏳ Deferred to phase planning |
+| ~~OD-8~~ | ~~Run Request schema~~ | [run-request.md](run-request.md) | ✅ Resolved |
+| ~~Q-ACCT-1~~ | ~~Does the suite own the portfolio ledger?~~ | [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md) | ✅ Resolved |
+| OD-3 | Arrow Tier-A confirmation (or bespoke columnar layout) | Perf/implementation | ⏳ Deferred to build phase |
+| OD-4 | Derivatives math: build in Rust vs. optional QuantLib plugin | [engine-e-derivatives.md](engines/engine-e-derivatives.md) | ⏳ Deferred to build phase |
+| ~~OD-5~~ | ~~Strategy-authoring form~~ | [ADR-0004](../adr/0004-strategy-json-pipeline.md) | ✅ Resolved |
+| ~~OD-6~~ | ~~Multi-strategy portfolios~~ | [contracts/plan.md](contracts/plan.md) | ✅ Resolved (BB-5) |
+| ~~OD-7~~ | ~~Component registry trust model~~ | [ADR-0011](../adr/0011-component-registry-trust-model.md) | ✅ Resolved |
+| OD-9 | Expression-vs-component boundary: how much logic is allowed in JSON expressions | [component-registry.md](component-registry.md) §9 | ⏳ Deferred to authoring phase |
+| OD-10 | Model registry & reproducibility: stable `model_id@version` resolution over time | [contracts/model.md](contracts/model.md) §8 | ⏳ Deferred to model phase |
+| ~~OD-11~~ | ~~Shared-contracts repo topology~~ | [ADR-0012](../adr/0012-standalone-contracts-kernel.md) | ✅ Resolved |
+| OD-12 | Validation gating of freshly trained artifacts (reject-and-keep-incumbent policy) | [contracts/training.md](contracts/training.md) §8 | ⏳ Deferred to training phase |
 
 ---
 
@@ -357,3 +373,17 @@ exploratory — lives in [`docs/OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 | **Strategy role** | A strategy's job in a Plan: `selector` (emits candidates), `entry`, `exit`, or `standalone` |
 | **`account_mode`** | Plan setting: `shared` (strategies net into one injected `Account`) or `isolated` (per-strategy partition) |
 | **ADL (auto-deleveraging)** | A perp-venue event that force-closes profitable, high-leverage positions when the insurance fund is exhausted; can reach the strategy's own position |
+| **Event stream** | A time-series binding replayed through the clock in `ts_event` order (market data, signals, corporate actions); distinguished from reference data |
+| **Reference data** | A binding loaded once and queried point-in-time by `effective_ts` + `knowable_ts` (e.g., credit spreads, exchange calendars, roll schedules); never replayed as events |
+| **DerivedBar** | A bar engine constructs inline from finer data (trade prints or fallback quote-mid); flagged `derived: true` + `source_class`; caller never supplies it |
+| **MediaReference** | A point-in-time pointer (URI + modality: text/image/video) to raw media; suite never decodes it — injected `Model` port loads it for multimodal inference |
+| **ContextBundle** | The point-in-time collection of exogenous items assembled per inference call from a model node's `context_inputs` (signals, media references, cross-instrument data) |
+| **Cohort** | A large, membership-changing universe bound as a single market-wide data source that materializes instruments point-in-time as they appear (DEX pairs, NFT collections, new listings) |
+| **Scanner** | A `universe.type` that screens a cohort by point-in-time market-data + signal filters; engine-agnostic; selects candidates, does not by itself decide entries |
+| **Plan** | The layer above Strategy: multiple flat strategies composed by data-flow (screen→entry→exit) or run concurrently; never nested; enables multi-strategy capital allocation and conflict resolution |
+| **Conflict policy** | Plan setting for resolving opposing intents on one asset: `net` (default; combine), `priority` (first wins), `reject` (both rejected) |
+| **Binding type** | A classification on data sources: `event_stream` (replayed) or `reference` (point-in-time queried) |
+| **Derived data** | Any payload the engine computes if absent from caller input (adjusted bars, continuous futures, implied vol surfaces); flagged with `derived: true` + `source_class` |
+| **Derived-data provenance** | Metadata (`derived: true`, `source_class`) on computed payloads; emitted via `output.emit: ["derived_data"]` so caller may persist it for audit |
+| **`effective_ts`** | When a reference-data entry becomes valid; used for point-in-time lookups (e.g., effective date of a credit-spread change) |
+| **`knowable_ts`** | When a reference-data entry could first have been known; enforces look-ahead safety on reference data (e.g., announcement date of an event, before effective date) |
