@@ -29,7 +29,7 @@ already specified in [run-request.md](DATA-002-run-request.md); this spec covers
 
 - Event-driven, deterministic clock; look-ahead safety system-wide.
 - Parallelism via Rust work-stealing; engines are `Send + Sync` ([ADR-0001](../adr/0001-runtime-rust-python-hybrid.md)).
-- The suite owns no portfolio; account state via injected `Account` ([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+- The simulator owns no portfolio; account state via injected `Account` ([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 - Training refits pause-train-resume within a run ([training.md](INTG-003-training-port.md)).
 
 ## Open items

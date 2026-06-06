@@ -89,7 +89,7 @@ price series** rather than individual contracts. There are several methods:
 | **Perpetual / proportional** | Interpolate between front and next by time-to-expiry | More complex; smaller artifacts |
 | **Nearby contract** | Always use the front month | Simple; roll gaps remain |
 
-**Implication:** the suite must maintain both the continuous (adjusted) series for signal
+**Implication:** the simulator must maintain both the continuous (adjusted) series for signal
 computation *and* the individual contract series for fill modeling and P&L. This is the same
 adjusted/unadjusted split as equities.
 
@@ -183,7 +183,7 @@ OPTIONAL:
 
 1. **Contract identity includes expiry.** `ES_2024-12-20` and `ES_2025-03-21` are different
    instruments with different `instrument_id`s, even though they share an underlying.
-2. **Continuous series is provide-or-derive.** The suite can construct a continuous series
+2. **Continuous series is provide-or-derive.** The simulator can construct a continuous series
    from individual contracts using a specified roll method, or the caller can provide a
    pre-built continuous series. Both paths must be supported.
 3. **Basis strategies need spot.** If a strategy trades the basis between futures and spot,

@@ -1133,7 +1133,7 @@ component requires, which means:
 ```jsonc
 "components": {
   "aapl_cfd_payoff": {
-    "kind": "builtin",            // builtin = ships with the suite
+    "kind": "builtin",            // builtin = ships with the simulator
     "ref": "vanilla_cfd"
   },
   "barrier_note_payoff": {
@@ -1149,7 +1149,7 @@ component requires, which means:
 
 ### How the market and the engine work
 
-NFT markets are structurally unlike any other financial market the suite simulates. NFTs are
+NFT markets are structurally unlike any other financial market the simulator simulates. NFTs are
 non-fungible: each token is unique. One unit of AAPL is perfectly interchangeable with any other
 unit of AAPL. But CryptoPunk #7804 is not interchangeable with CryptoPunk #1 — they are distinct
 objects with potentially very different values based on their traits. This means there is no
@@ -1196,7 +1196,7 @@ there is no stable relationship between trait rarity and price premium across ma
 bull markets produce wild rarity premiums; bear markets collapse them entirely. The engine
 records the floor-price mark source and its limitations explicitly in every result.
 
-Rarity scores are caller-provided metadata. The suite owns no rarity methodology — multiple
+Rarity scores are caller-provided metadata. The simulator owns no rarity methodology — multiple
 calculation methods exist (simple rarity score, information-theoretic, harmonic mean) and
 they produce meaningfully different rankings for the same collection. The engine uses provided
 scores only for trait-filtered buy matching and for attributing realized rarity premium
@@ -1349,7 +1349,7 @@ Positions are closed at the binary payoff via `Account`. Until resolution, unrea
 simply `position × current_price − cost_basis`.
 
 **Resolution timing uncertainty** distinguishes prediction markets from every other
-time-bounded derivative in the suite. A futures contract expires on a known date. An option
+time-bounded derivative in the simulator. A futures contract expires on a known date. An option
 has a fixed expiry. But "will the Fed cut rates in March?" resolves when the FOMC meeting
 occurs — which is scheduled — and the outcome becomes definitively known at a specific moment
 that cannot be anticipated. More importantly, the oracle reporting that outcome has its own
@@ -1480,11 +1480,11 @@ Optional:
 
 ## The Run Request — Line by Line
 
-The Run Request is the per-invocation document that tells the suite how to execute one run.
+The Run Request is the per-invocation document that tells the simulator how to execute one run.
 The Strategy JSON says what the strategy is. The Run Request says how to run it this time —
 binding it to concrete data, a time window, parameter values, and all injected ports.
 
-The suite stores nothing. There is no session, no database, no persistence between invocations.
+The simulator stores nothing. There is no session, no database, no persistence between invocations.
 A Run Request wires in everything the run needs and is discarded when the run completes.
 
 ---
@@ -1495,14 +1495,14 @@ A Run Request wires in everything the run needs and is discarded when the run co
 {
   "schema_version": "1.0",
 ```
-The version of the Run Request schema itself. The suite uses this to decide which parser to
+The version of the Run Request schema itself. The simulator uses this to decide which parser to
 invoke. Increment this when breaking changes are made to the top-level structure. This is not
 the strategy version or the data version — it is strictly the schema version of this document.
 
 ```jsonc
   "request_id": "caller-correlation-id",
 ```
-An opaque string the caller supplies. The suite echoes it in every result and TradeRecord for
+An opaque string the caller supplies. The simulator echoes it in every result and TradeRecord for
 the run. It is never stored, never interpreted, never used for routing. It exists purely so the
 caller can correlate results back to the specific invocation that produced them — useful when
 running many sweeps concurrently and receiving results asynchronously.
@@ -1512,7 +1512,7 @@ running many sweeps concurrently and receiving results asynchronously.
 ```
 The full strategy definition for this run. This is either the complete Strategy JSON object
 inlined here, or a handle (an opaque reference the caller's infrastructure resolves to a
-strategy JSON before the suite sees it). The suite never stores strategies — it receives one
+strategy JSON before the simulator sees it). The simulator never stores strategies — it receives one
 per invocation, validates it, compiles it into an internal execution plan, runs it, and
 discards it. The strategy defines the declarative pipeline: universe, features, models, alpha,
 sizing, risk, and execution stages. It declares the parameter space (what is tunable and the
@@ -1542,7 +1542,7 @@ object as defined in the Instrument Contract spec — containing `id`, `price_fo
 `capabilities`, `tick_size`, `lot_size`, `contract_multiplier`, and all the
 capability-gated static metadata (expiry dates, strikes, coupon schedules, pool addresses, etc.)
 that the selected engine needs. The `price_formation` field on each instrument is the routing
-key — it tells the suite which engine to instantiate for that instrument. No other field
+key — it tells the simulator which engine to instantiate for that instrument. No other field
 determines engine selection.
 
 ---
@@ -1553,7 +1553,7 @@ determines engine selection.
   "data": {
     "reader": "arrow_ipc",
 ```
-The data reader type — the format and access mechanism the suite uses to load market data.
+The data reader type — the format and access mechanism the simulator uses to load market data.
 `arrow_ipc` means Apache Arrow IPC files (the primary format — zero-copy, columnar, extremely
 fast to deserialize into the Rust hot loop). `parquet` means Parquet files (slower to load but
 widely available). `injected:<id>` means a custom `DataReader` implementation the caller
@@ -1578,7 +1578,7 @@ A map of instrument ID to its data sources. Each key must match an instrument ID
 `instruments` array. Each value specifies which data streams are bound for that instrument
 and where to find them. The keys inside the per-instrument object (`bars`, `trades`,
 `quotes`, `funding`, `pool_states`, `iv_surface`, etc.) map to the payload class names
-defined in the Market Data Contract. The suite validates each binding against the instrument's
+defined in the Market Data Contract. The simulator validates each binding against the instrument's
 required-data manifest at run start: if a required payload class is missing, the run is
 rejected with a `ManifestViolation` error naming the specific missing class. Optional payload
 classes produce warnings but allow the run to proceed at reduced fidelity.
@@ -1593,10 +1593,10 @@ classes produce warnings but allow the run to proceed at reduced fidelity.
 ```
 Identifies which `Account` implementation to use. `"injected:my_ledger"` means the caller
 provides a concrete implementation of the `Account` trait at runtime. `"reference"` means
-use the optional reference adapter the suite ships as a convenience (single-currency cash
+use the optional reference adapter the simulator ships as a convenience (single-currency cash
 ledger, basic margin support). The `Account` port is the caller's portfolio and accounting
-model — the suite queries it for equity, buying power, positions, and collateral, and reports
-simulated fills to it. The suite never defines the accounting internals; it only defines the
+model — the simulator queries it for equity, buying power, positions, and collateral, and reports
+simulated fills to it. The simulator never defines the accounting internals; it only defines the
 interface (the `Account` trait).
 
 ```jsonc
@@ -1605,7 +1605,7 @@ interface (the `Account` trait).
       "starting_balance": 100000,
 ```
 When using the reference adapter, `starting_balance` sets the initial cash in the account.
-This value lives in the Account, not in the suite — the suite sees it only by querying
+This value lives in the Account, not in the simulator — the simulator sees it only by querying
 `account.equity(...)`. For the injected port, this config object is passed through to the
 caller's implementation without interpretation.
 
@@ -1614,7 +1614,7 @@ caller's implementation without interpretation.
 ```
 The caller's settlement cycle. T+2 means equity trades settle two business days after
 execution. This affects when buying power is actually updated in the account after a fill.
-The suite reports fills immediately; the account decides when those fills are settled into
+The simulator reports fills immediately; the account decides when those fills are settled into
 cash and positions. The settlement mechanics are entirely the account's responsibility.
 
 ```jsonc
@@ -1650,7 +1650,7 @@ runtime format — `onnx` for ONNX Runtime (the primary cross-platform model for
 for TorchScript, `custom` for a caller-injected inference function. `uri` is the path or
 address of the model artifact. `version` must exactly match the version pinned in the strategy
 JSON — a version mismatch is a validation error, not a warning, because mismatched versions
-can silently change model behavior and invalidate reproducibility. The suite never stores model
+can silently change model behavior and invalidate reproducibility. The simulator never stores model
 weights and never manages model artifacts — the caller resolves model handles to artifacts and
 provides them here.
 
@@ -1665,11 +1665,11 @@ provides them here.
 ```
 The injected `Trainer` implementation. Required only if the strategy's `models` section
 includes a `training` block with `"enabled": true`. The `Trainer` port is the caller's
-training algorithm infrastructure — the suite orchestrates *when* to retrain (based on the
+training algorithm infrastructure — the simulator orchestrates *when* to retrain (based on the
 strategy's declared rolling window and step schedule) and *with what point-in-time data* (it
 assembles the PIT training dataset from the bound features at the current simulation clock).
 But the training algorithm itself — the actual model fitting, hyperparameter optimization,
-gradient computation — is the caller's responsibility. The suite calls the Trainer with the
+gradient computation — is the caller's responsibility. The simulator calls the Trainer with the
 PIT dataset and the training method name (declared in the strategy JSON) and receives back a
 new model artifact handle. If no strategy in this run uses training, this section is omitted.
 
@@ -1689,7 +1689,7 @@ new model artifact handle. If no strategy in this run uses training, this sectio
   },
 ```
 Binds any custom components referenced in the strategy JSON by ID. Built-in components
-(indicators, alpha functions, sizing methods, and payoff functions that ship with the suite
+(indicators, alpha functions, sizing methods, and payoff functions that ship with the simulator
 itself) need no binding — they are resolved automatically. `kind: "wasm"` deploys the component
 into the WASM sandbox — a sealed WebAssembly runtime with no I/O, no clock, no network, and no
 mutable global state. This is the trust tier for untrusted or AI-generated components. `kind:
@@ -1771,13 +1771,13 @@ at exactly the stop price, and sell stops assumed to trigger at the worst intrab
     "seed": 12345
   },
 ```
-The global random seed for the run. Every source of randomness in the suite — probabilistic
+The global random seed for the run. Every source of randomness in the simulator — probabilistic
 queue tie-breaks in the order book, the optional sandwich MEV model in Engine B, the optional
 incorrect-resolution model in Engine H, the demand model in Engine G, and any seeded inference
 in injected models — draws from a deterministic PRNG seeded by this value. Given an identical
 Run Request with all identical injected ports (themselves deterministic), the same seed
 guarantees byte-identical results regardless of thread count or hardware. This is a hard
-invariant of the suite. Sweeps use derived seeds (`seed XOR parameter_hash`) so each swept
+invariant of the simulator. Sweeps use derived seeds (`seed XOR parameter_hash`) so each swept
 run is independently reproducible.
 
 ---
@@ -1897,7 +1897,7 @@ These resolved rules apply across every engine and complement the per-engine sec
 
 ## Validation order at run start
 
-Before the first event is processed, the suite runs nine validation passes in strict order.
+Before the first event is processed, the simulator runs nine validation passes in strict order.
 All nine must pass or the run is rejected with a precise, typed error. There is no partial
 execution. (This mirrors the authoritative list in [run-request.md](../specs/DATA-002-run-request.md) §10; if the
 two ever drift, the Run Request spec wins.)
@@ -1915,7 +1915,7 @@ known engines. Each capability set is checked for internal consistency (e.g. you
 `HasFunding` without `HasMarkPrice` because funding uses the mark price). Each instrument's
 `tick_size` and `lot_size` are checked for positive non-zero values.
 
-**4. Data manifest:** for each `(instrument_id, engine)` pair, the suite checks that all
+**4. Data manifest:** for each `(instrument_id, engine)` pair, the simulator checks that all
 `required` payload classes declared in the instrument's data manifest are bound in
 `data.bindings`. A single missing required payload class produces a `ManifestViolation`
 naming the instrument and the missing class. Optional missing classes produce warnings but
@@ -1936,7 +1936,7 @@ is processed. A `swap_exact_in` order on a `CLOB` instrument is similarly caught
 mismatches produce a `CapabilityOrderTypeError` naming the instrument, the engine, and the
 invalid order type.
 
-**7. Data sufficiency:** for each `(instrument_id, engine)` pair, the suite checks the bound
+**7. Data sufficiency:** for each `(instrument_id, engine)` pair, the simulator checks the bound
 data descriptors against the per-engine minimum requirements. This pass uses the `payload_class`
 and `interval` fields from each descriptor — it does not read any data files. A missing required
 payload class that cannot be derived produces a `DataSufficiencyError` (hard rejection). A
@@ -1961,11 +1961,11 @@ A reference to an unbound cohort or an unresolvable filter field is a typed erro
 
 These hold for every run, unconditionally.
 
-1. **No assumed portfolio.** The suite never owns cash, positions, or an equity curve. Account
-   state is injected via the `Account` port. The suite owns the mechanics (sizing formulas,
+1. **No assumed portfolio.** The simulator never owns cash, positions, or an equity curve. Account
+   state is injected via the `Account` port. The simulator owns the mechanics (sizing formulas,
    fill simulation, liquidation math). The caller owns the ledger.
 
-2. **Stateless suite.** Nothing persists across runs. `request_id` and `strategy_id` are
+2. **Stateless simulator.** Nothing persists across runs. `request_id` and `strategy_id` are
    echoed in results but never stored. Running the same Run Request twice produces two
    independent, identical outputs.
 
@@ -1974,7 +1974,7 @@ These hold for every run, unconditionally.
    is the single source of randomness.
 
 4. **Point-in-time.** Every binding, port query, model inference input, and training data
-   window may only expose `ts_event ≤ current_ts`. The suite enforces this at the contract
+   window may only expose `ts_event ≤ current_ts`. The simulator enforces this at the contract
    boundary. A strategy or model literally cannot be handed future data.
 
 5. **Feed-agnostic strategy.** The Strategy JSON is identical for backtest and live execution.
@@ -1983,5 +1983,5 @@ These hold for every run, unconditionally.
    not a property of the strategy.
 
 6. **Fail loud.** An under-specified run is rejected with a precise error before any event is
-   processed. The suite never silently produces plausible-but-wrong results from incomplete
+   processed. The simulator never silently produces plausible-but-wrong results from incomplete
    data or missing ports.

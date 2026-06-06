@@ -6,14 +6,14 @@
 **Date:** 2026-06-06
 **Author:** Agent
 
-**Related:** [ADR-0010](../adr/0010-suite-does-not-own-portfolio.md), [run-request.md](DATA-002-run-request.md) §5
+**Related:** [ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md), [run-request.md](DATA-002-run-request.md) §5
 
 
 ---
 
 ## 1. Purpose
 
-The suite does **not own or persist the portfolio ledger**. Instead, it calls an injected
+The simulator does **not own or persist the portfolio ledger**. Instead, it calls an injected
 `Account` port (a caller-provided interface) whenever it needs to:
 
 - Query current **equity** (cash + mark-to-market holdings)
@@ -22,22 +22,22 @@ The suite does **not own or persist the portfolio ledger**. Instead, it calls an
 - Query **collateral balance** (for margin products: perps, options, short positions)
 - **Report fills** (tell the ledger about executed trades so it updates)
 
-The Account lives in the **trading platform**. The suite is stateless with respect to portfolio.
+The Account lives in the **trading platform**. The simulator is stateless with respect to portfolio.
 
 ---
 
-## 2. Why not owned by the suite?
+## 2. Why not owned by the simulator?
 
 | Concern | Owner | Why |
 |---|---|---|
 | **Live trading ledger** | Platform | Live and backtest must use identical order/execution semantics; the ledger must be parity. |
-| **Multi-account support** | Platform | A platform may manage many accounts; the suite has no opinion about account identity/ownership. |
+| **Multi-account support** | Platform | A platform may manage many accounts; the simulator has no opinion about account identity/ownership. |
 | **Settlement rules** | Platform | T+2 equities, T+0 crypto, T+1 futures, etc. — venue-specific and platform policy. |
-| **Currency conversion** | Platform | Multi-currency accounting is not the suite's concern. |
+| **Currency conversion** | Platform | Multi-currency accounting is not the simulator's concern. |
 | **Accounting, tax** | Platform | Cost basis tracking, tax-lot selection, wash-sale rules. |
-| **Risk limits** | Platform | Portfolio-level exposure/correlation limits are above the suite's layer. |
+| **Risk limits** | Platform | Portfolio-level exposure/correlation limits are above the simulator's layer. |
 
-The suite cares only about **fills and mark-to-market**. The ledger cares about everything else.
+The simulator cares only about **fills and mark-to-market**. The ledger cares about everything else.
 
 ---
 
@@ -60,7 +60,7 @@ pub trait Account {
   /// For margin products (perps, options, short): available collateral
   fn collateral_balance(&self) -> Decimal;
 
-  /// Report a fill to the ledger (suite calls after every trade)
+  /// Report a fill to the ledger (simulator calls after every trade)
   fn report_fill(&mut self, trade: &TradeRecord);
 
   /// Force-close a position (used at run end or on liquidation)
@@ -103,7 +103,7 @@ A conforming Account implementation must satisfy:
 4. **State Management**
    - [ ] Account is initialized once per run with starting capital
    - [ ] All subsequent state changes go through `report_fill()` or `force_close()`
-   - [ ] No silent failures: errors are propagated to the suite
+   - [ ] No silent failures: errors are propagated to the simulator
 
 5. **Latency**
    - [ ] All Account methods return in < 1ms (read operations sub-microsecond for in-memory state)
@@ -206,30 +206,30 @@ The Account is bound in the **Run Request** under `account`:
 ```jsonc
 {
   "account": {
-    "provider": "simple_account",  // Suite calls this injected handler
+    "provider": "simple_account",  // Simulator calls this injected handler
     "initial_capital": 100000,     // Starting cash
     "currency": "USD"
   }
 }
 ```
 
-The suite never instantiates the Account — the platform provides it at run time.
+The simulator never instantiates the Account — the platform provides it at run time.
 
 ---
 
 ## 7. Key invariants
 
-1. **No portfolio assumed.** The suite assumes zero opening positions. If a backtest should
-   start with existing holdings, the Account's `positions()` returns them; the suite does not.
+1. **No portfolio assumed.** The simulator assumes zero opening positions. If a backtest should
+   start with existing holdings, the Account's `positions()` returns them; the simulator does not.
 
-2. **Cash not owned by the suite.** Anything the suite needs to know about capital
+2. **Cash not owned by the simulator.** Anything the simulator needs to know about capital
    (buying power, margin balance) it **queries** from the Account, never assumes.
 
 3. **Fills reported, not stored.** Every fill (successful trade) is reported to the Account
-   immediately. The suite does not maintain a fill history; the Account does.
+   immediately. The simulator does not maintain a fill history; the Account does.
 
 4. **Atomic updates.** A single `report_fill()` call updates both position quantity and cash
-   atomically. The suite never leaves the Account in an inconsistent state.
+   atomically. The simulator never leaves the Account in an inconsistent state.
 
 5. **Mark-to-market from engine.** The Account queries mark prices; the **engine** provides them
    (current bid/ask, last trade, NAV, etc.). The Account does not decide fill prices.
@@ -238,9 +238,9 @@ The suite never instantiates the Account — the platform provides it at run tim
 
 ## 8. Non-requirements
 
-- **No account ownership.** The suite does not own or persist accounts.
+- **No account ownership.** The simulator does not own or persist accounts.
 - **No multi-account orchestration.** If a strategy should trade across multiple accounts, that
-  is platform logic, not suite logic.
+  is platform logic, not simulator logic.
 - **No settlement lag modeling.** T+2, T+0, etc. — if the platform needs to model settlement,
   it owns that Account extension.
 - **No currency conversion.** All Account operations are in a single base currency (determined

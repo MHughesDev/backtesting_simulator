@@ -1,8 +1,8 @@
-# backtesting_simulator
+# trading_simulator
 
-`backtesting_simulator` is a standalone, headless backtesting engine designed to simulate algorithmic trading strategies against historical market data across every major digital and traditional asset class. It is built as a library — a callable processing core that a trading platform, research tool, or any conforming caller passes strategies and historical data into, and receives per-trade records and performance metrics from. The engine covers eleven asset classes: equities, ETFs and mutual funds, centralized-exchange spot crypto, decentralized exchange AMM pools, expiring futures, perpetual swaps, options, fixed-income bonds, foreign exchange, NFTs, and prediction markets. Each instrument is routed to one of eight distinct execution engines selected entirely by how that instrument's price is formed — not by its asset category. The simulation is event-driven and path-dependent: historical market events are replayed in deterministic nanosecond-UTC timestamp order, and look-ahead safety is enforced structurally so a strategy cannot observe data timestamped after the current simulation clock. Each engine models the specific mechanics of its market — order book depth, queue position, and latency for exchange-traded instruments; AMM price impact computed from the constant-product or StableSwap invariant for DEX pools; funding payments and mark-price liquidation for leveraged perpetuals; forward pricing and daily NAV resets for funds; implied-volatility surface pricing with full greek computation for options; scheduled cash-flow valuation with accrued interest and day-count conventions for bonds; payoff-component-driven pricing for bilateral OTC synthetics; listing-and-sale matching for NFT collections; and binary-outcome resolution with Brier-score calibration metrics for prediction markets. The performance core is written in Rust and exposed to Python via PyO3 bindings, with Apache Arrow as the zero-copy columnar format at the language boundary.
+`trading_simulator` is a standalone, headless backtesting engine designed to simulate algorithmic trading strategies against historical market data across every major digital and traditional asset class. It is built as a library — a callable processing core that a trading platform, research tool, or any conforming caller passes strategies and historical data into, and receives per-trade records and performance metrics from. The engine covers eleven asset classes: equities, ETFs and mutual funds, centralized-exchange spot crypto, decentralized exchange AMM pools, expiring futures, perpetual swaps, options, fixed-income bonds, foreign exchange, NFTs, and prediction markets. Each instrument is routed to one of eight distinct execution engines selected entirely by how that instrument's price is formed — not by its asset category. The simulation is event-driven and path-dependent: historical market events are replayed in deterministic nanosecond-UTC timestamp order, and look-ahead safety is enforced structurally so a strategy cannot observe data timestamped after the current simulation clock. Each engine models the specific mechanics of its market — order book depth, queue position, and latency for exchange-traded instruments; AMM price impact computed from the constant-product or StableSwap invariant for DEX pools; funding payments and mark-price liquidation for leveraged perpetuals; forward pricing and daily NAV resets for funds; implied-volatility surface pricing with full greek computation for options; scheduled cash-flow valuation with accrued interest and day-count conventions for bonds; payoff-component-driven pricing for bilateral OTC synthetics; listing-and-sale matching for NFT collections; and binary-outcome resolution with Brier-score calibration metrics for prediction markets. The performance core is written in Rust and exposed to Python via PyO3 bindings, with Apache Arrow as the zero-copy columnar format at the language boundary.
 
-> **Status:** Architecture and data-contract design phase. No engine implementation code exists yet. This repository holds the full specification, all data-contract definitions, architecture decision records, and research that the implementation will be built from. See [`docs/specs/SYS-001-backtesting-simulator-overview.md`](docs/specs/SYS-001-backtesting-simulator-overview.md).
+> **Status:** Architecture and data-contract design phase. No engine implementation code exists yet. This repository holds the full specification, all data-contract definitions, architecture decision records, and research that the implementation will be built from. See [`docs/specs/SYS-001-trading-simulator-overview.md`](docs/specs/SYS-001-trading-simulator-overview.md).
 
 ---
 
@@ -16,7 +16,7 @@ The central design decision of this system is that **asset category does not det
 
 ## Execution Engines
 
-The suite contains eight engines. Each owns exactly one price-formation mechanic. The rule for adding a new engine is: if price formation changes, build a new engine; if it stays the same and the difference is a new mechanic layered on top, add a capability flag to the existing engine.
+The simulator contains eight engines. Each owns exactly one price-formation mechanic. The rule for adding a new engine is: if price formation changes, build a new engine; if it stays the same and the difference is a new mechanic layered on top, add a capability flag to the existing engine.
 
 **Engine A — Order Book (`CLOB`)** is the most general-purpose engine and handles any instrument traded on a central limit order book. It reconstructs the book from historical data at one of four fidelity levels: full per-order L3 data (enabling exact queue-position reconstruction), aggregated L2 depth (exact walk-the-book slippage), best-bid-offer L1 (spread-aware fill at the touch), or OHLCV bars (fill at next-bar open, pessimistic stop fills). Fidelity level is detected from what data is supplied; a run with only daily bars produces correct but lower-accuracy fills compared to a run with tick-level order-flow data, and the difference is reported. This engine handles equities, spot crypto on centralized exchanges, spot FX, expiring futures, and perpetual swaps — six asset classes — with each using a different set of capability flags.
 
@@ -44,7 +44,7 @@ Each stage of the pipeline produces named values that downstream stages bind to 
 
 Extensibility is provided by the **component registry**: a tiered store of named, typed, reusable code components. Built-in components (indicators, sizing functions, selectors, risk checks) are compiled into the Rust core. Trusted native components can be registered by the caller. Untrusted or AI-authored components run in a sandboxed WASM runtime that enforces purity — no I/O, no system clock, no network access. Strategies reference components by ID; the logic lives in the registry, not in the JSON.
 
-The **Run Request** is the per-invocation document kept separate from the strategy JSON. It binds the strategy to concrete historical data sources (as typed Apache Arrow IPC files), sets the simulation date range, specifies starting capital, provides the RNG seed for any stochastic components, and supplies concrete values (or a sweep range) for any parameters declared in the strategy. Separating strategy from run configuration is what allows the same strategy JSON to run unchanged in backtest and live — the trading platform swaps the data bindings and the suite's behavior is otherwise identical.
+The **Run Request** is the per-invocation document kept separate from the strategy JSON. It binds the strategy to concrete historical data sources (as typed Apache Arrow IPC files), sets the simulation date range, specifies starting capital, provides the RNG seed for any stochastic components, and supplies concrete values (or a sweep range) for any parameters declared in the strategy. Separating strategy from run configuration is what allows the same strategy JSON to run unchanged in backtest and live — the trading platform swaps the data bindings and the simulator's behavior is otherwise identical.
 
 ---
 
@@ -61,21 +61,21 @@ When strategies in a Plan attempt conflicting actions on the same instrument, th
 
 ## Data Architecture
 
-Every data type the suite can ingest belongs to one of three planes. The plane determines how the data can be used.
+Every data type the simulator can ingest belongs to one of three planes. The plane determines how the data can be used.
 
 **Market-Data Plane** contains prices, order books, pool state, funding rates, and all other data the engine computes fills against. It is the only plane that can set a fill price. It is governed by `ts_event` — when the market event actually occurred.
 
 **Exogenous-Signal Plane** contains external information that informs a strategy's decisions: news, social sentiment, macro indicators, on-chain analytics, earnings estimates, credit ratings, and multimodal media references (text, images, video passed to an AI model). Data in this plane can change what a strategy decides to do. It cannot set a fill price. It is governed by `ts_available` — when the strategy could first have known the information — which accounts for publication lag. A merger announced before it becomes effective has `ts_event = closing date` and `ts_available = announcement date`. A regulatory filing dated to a quarter-end but published weeks later has `ts_available = publication date`. Using `ts_event` for exogenous data would introduce systematic look-ahead.
 
-**Operational / Meta Plane** contains records the suite emits about its own run: lineage, warnings, per-decision audit entries, degraded-fidelity flags.
+**Operational / Meta Plane** contains records the simulator emits about its own run: lineage, warnings, per-decision audit entries, degraded-fidelity flags.
 
-The suite is **venue-neutral**: it recognizes normalized payload types, never vendor feed dialects. A caller-owned adapter translates any vendor or source feed into the suite's typed payloads before the data reaches the engine. This is what keeps the core small and universal.
+The simulator is **venue-neutral**: it recognizes normalized payload types, never vendor feed dialects. A caller-owned adapter translates any vendor or source feed into the simulator's typed payloads before the data reaches the engine. This is what keeps the core small and universal.
 
 ---
 
 ## Look-Ahead Safety
 
-Look-ahead bias — a strategy observing data dated after the current simulation clock — is the most consequential correctness error in backtesting. The suite enforces look-ahead prevention structurally in three ways. First, the event-replay clock is monotonically ordered: an event at `ts_event = T` is processed before any event at `ts_event > T`, and no strategy accessor can observe a later timestamp. Second, exogenous signals use `ts_available` as their look-ahead clock, not `ts_event`, so publication lag is respected. Third, AI model inference is bounded: a model can only observe features whose source data has `ts_event ≤ current_ts`, and the training mechanic — pause the simulation clock, train on point-in-time data, swap the model artifact, resume — prevents any future data from entering a model's training window.
+Look-ahead bias — a strategy observing data dated after the current simulation clock — is the most consequential correctness error in backtesting. The simulator enforces look-ahead prevention structurally in three ways. First, the event-replay clock is monotonically ordered: an event at `ts_event = T` is processed before any event at `ts_event > T`, and no strategy accessor can observe a later timestamp. Second, exogenous signals use `ts_available` as their look-ahead clock, not `ts_event`, so publication lag is respected. Third, AI model inference is bounded: a model can only observe features whose source data has `ts_event ≤ current_ts`, and the training mechanic — pause the simulation clock, train on point-in-time data, swap the model artifact, resume — prevents any future data from entering a model's training window.
 
 A strategy also cannot fill at the price it observed at decision time for bar-fidelity data. A market order generated by observing a bar close fills at the next bar's open, not the close — because the close price was not yet known at the time the decision was logically made. The engine enforces this by default and reports any configuration that would produce fill-at-close as a contract error.
 
@@ -83,9 +83,9 @@ A strategy also cannot fill at the price it observed at decision time for bar-fi
 
 ## Concurrency and the Run Queue
 
-Submitting multiple backtests in a single call — parameter sweeps, multi-asset runs, walk-forward windows — is a first-class concern of the suite. The run queue dispatches individual runs to a work-stealing thread pool. All engine state is `Send + Sync`: there are no shared mutable data structures across runs, and the Python GIL is not held during engine execution. This allows N concurrent backtests to run in parallel bounded only by the available CPU cores on the host machine.
+Submitting multiple backtests in a single call — parameter sweeps, multi-asset runs, walk-forward windows — is a first-class concern of the simulator. The run queue dispatches individual runs to a work-stealing thread pool. All engine state is `Send + Sync`: there are no shared mutable data structures across runs, and the Python GIL is not held during engine execution. This allows N concurrent backtests to run in parallel bounded only by the available CPU cores on the host machine.
 
-The suite stores no state between invocations. There is no session, no database, and no persistence. Each Run Request is self-contained: it wires in all data bindings, all injected ports, and all parameters for that run, and is discarded when the run completes. This is what makes the suite a library rather than a service.
+The simulator stores no state between invocations. There is no session, no database, and no persistence. Each Run Request is self-contained: it wires in all data bindings, all injected ports, and all parameters for that run, and is discarded when the run completes. This is what makes the simulator a library rather than a service.
 
 ---
 
@@ -96,14 +96,14 @@ The suite stores no state between invocations. There is no session, no database,
 | Performance core | **Rust** | Contracts, engines, event clock, run queue. Enforces data-race freedom and runs without GIL. |
 | Language boundary | **PyO3 / maturin** | Exposes the Rust core as a native Python extension module. |
 | Data transfer format | **Apache Arrow IPC** | Zero-copy columnar format used at the Rust↔Python boundary and for all data file bindings in the Run Request. |
-| Strategy authoring | **Python + JSON** | Python is used to construct strategy JSON and Run Request documents; the suite validates and executes them. |
+| Strategy authoring | **Python + JSON** | Python is used to construct strategy JSON and Run Request documents; the simulator validates and executes them. |
 | Sandboxed components | **WebAssembly (WASM)** | Untrusted or AI-authored payoff components and custom indicators run in a WASM runtime with no I/O, clock, or network access. |
 
 ---
 
 ## Supported Markets and Asset Classes
 
-The table below lists every market the suite is designed to simulate, the normalized market-data payload types that engine reads for that market, the engine that handles it, and a description of what that market is and how it operates.
+The table below lists every market the simulator is designed to simulate, the normalized market-data payload types that engine reads for that market, the engine that handles it, and a description of what that market is and how it operates.
 
 | Asset Class | Sub-types | Core Market Data Payloads | Engine | Market Description |
 |---|---|---|---|---|
@@ -125,9 +125,9 @@ The table below lists every market the suite is designed to simulate, the normal
 
 | Document | Path | Description |
 |---|---|---|
-| **Master Specification** | [`docs/specs/SYS-001-backtesting-simulator-overview.md`](docs/specs/SYS-001-backtesting-simulator-overview.md) | End-to-end system overview: principles, system map, asset taxonomy, contracts, engines, run queue, integration boundary, performance approach, open decisions, and glossary. The entry point for understanding the full system. |
+| **Master Specification** | [`docs/specs/SYS-001-trading-simulator-overview.md`](docs/specs/SYS-001-trading-simulator-overview.md) | End-to-end system overview: principles, system map, asset taxonomy, contracts, engines, run queue, integration boundary, performance approach, open decisions, and glossary. The entry point for understanding the full system. |
 | **Engine Deep Dive** | [`docs/reference/ENGINE_DEEP_DIVE.md`](docs/reference/ENGINE_DEEP_DIVE.md) | Full engineering reference for all eight engines. For each engine: how the real-world market works, how the engine replicates those mechanics, what makes this engine unique, and the exact data contract (instrument fields, required payloads, Run Request bindings, error conditions). Also contains the Run Request line-by-line reference. |
-| **Data Taxonomy** | [`docs/specs/DATA-001-data-taxonomy.md`](docs/specs/DATA-001-data-taxonomy.md) | Complete map of every data type the suite can ingest, organized by the three planes (Market-Data, Exogenous-Signal, Operational/Meta). Documents the two look-ahead clocks (`ts_event` vs. `ts_available`), the core event envelope, and the venue-neutral normalization model. |
+| **Data Taxonomy** | [`docs/specs/DATA-001-data-taxonomy.md`](docs/specs/DATA-001-data-taxonomy.md) | Complete map of every data type the simulator can ingest, organized by the three planes (Market-Data, Exogenous-Signal, Operational/Meta). Documents the two look-ahead clocks (`ts_event` vs. `ts_available`), the core event envelope, and the venue-neutral normalization model. |
 | **Run Request** | [`docs/specs/DATA-002-run-request.md`](docs/specs/DATA-002-run-request.md) | Line-by-line specification of the per-invocation document that binds a strategy to data, a time window, parameters, and all injected ports for a single run. |
 | **Runner** | [`docs/specs/COMP-002-runner-and-run-queue.md`](docs/specs/COMP-002-runner-and-run-queue.md) | Run queue and execution model specification. |
 | **Component Registry** | [`docs/specs/COMP-001-component-registry.md`](docs/specs/COMP-001-component-registry.md) | Specification of the tiered component registry: built-in Rust components, trusted native components, and sandboxed WASM components. Trust model, registration, and the expression-vs-component boundary. |
@@ -166,12 +166,12 @@ The table below lists every market the suite is designed to simulate, the normal
 | ADR-0002 | [`docs/adr/0002-minimal-external-dependencies.md`](docs/adr/0002-minimal-external-dependencies.md) | Policy to own all contracts and core mechanics in-house rather than depending on external financial libraries. |
 | ADR-0003 | [`docs/adr/0003-capability-based-instrument-model.md`](docs/adr/0003-capability-based-instrument-model.md) | Why engine routing uses capability flags rather than asset-type switches. |
 | ADR-0004 | [`docs/adr/0004-strategy-json-pipeline.md`](docs/adr/0004-strategy-json-pipeline.md) | Why strategies are a single declarative JSON pipeline rather than imperative callback code. |
-| ADR-0005 | [`docs/adr/0005-strategy-not-stored-suite-is-a-library.md`](docs/adr/0005-strategy-not-stored-suite-is-a-library.md) | Why the suite stores nothing and the trading platform owns all persistent state. |
+| ADR-0005 | [`docs/adr/0005-strategy-not-stored-simulator-is-a-library.md`](docs/adr/0005-strategy-not-stored-simulator-is-a-library.md) | Why the simulator stores nothing and the trading platform owns all persistent state. |
 | ADR-0006 | [`docs/adr/0006-model-inference-and-training.md`](docs/adr/0006-model-inference-and-training.md) | Scope and design of AI/ML model integration: inference-only port, injected Trainer, no model weights stored. |
-| ADR-0007 | [`docs/adr/0007-shared-training-pipeline-port.md`](docs/adr/0007-shared-training-pipeline-port.md) | Why the training implementation lives in a shared package rather than in the suite. |
-| ADR-0008 | [`docs/adr/0008-training-scope-method-visibility-retention.md`](docs/adr/0008-training-scope-method-visibility-retention.md) | What the suite controls during retraining vs. what the injected Trainer controls. |
+| ADR-0007 | [`docs/adr/0007-shared-training-pipeline-port.md`](docs/adr/0007-shared-training-pipeline-port.md) | Why the training implementation lives in a shared package rather than in the simulator. |
+| ADR-0008 | [`docs/adr/0008-training-scope-method-visibility-retention.md`](docs/adr/0008-training-scope-method-visibility-retention.md) | What the simulator controls during retraining vs. what the injected Trainer controls. |
 | ADR-0009 | [`docs/adr/0009-end-state-system-no-mvp.md`](docs/adr/0009-end-state-system-no-mvp.md) | Decision to specify and build the full end-state system (all assets, all eight engines) rather than a reduced MVP. |
-| ADR-0010 | [`docs/adr/0010-suite-does-not-own-portfolio.md`](docs/adr/0010-suite-does-not-own-portfolio.md) | Why the suite operates on a per-trade model and the portfolio ledger is an injected caller-owned port. |
+| ADR-0010 | [`docs/adr/0010-simulator-does-not-own-portfolio.md`](docs/adr/0010-simulator-does-not-own-portfolio.md) | Why the simulator operates on a per-trade model and the portfolio ledger is an injected caller-owned port. |
 | ADR-0011 | [`docs/adr/0011-component-registry-trust-model.md`](docs/adr/0011-component-registry-trust-model.md) | The tiered trust model for components: built-in, trusted native, and WASM-sandboxed untrusted. |
 | ADR-0012 | [`docs/adr/0012-standalone-contracts-kernel.md`](docs/adr/0012-standalone-contracts-kernel.md) | Why the shared cross-boundary contract types are a standalone dependency-free kernel. |
 | **Research** | [`docs/research/`](docs/research/) | Primary sources, summaries, and conclusions backing the architecture decisions. |

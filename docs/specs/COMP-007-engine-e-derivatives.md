@@ -29,7 +29,7 @@ impl Engine for DerivativesEngine {
 ```
 
 Account/margin state is read from the injected `Account`; the engine owns no portfolio
-([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 
 ---
 

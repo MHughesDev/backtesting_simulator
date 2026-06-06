@@ -10,10 +10,10 @@ A **strategy** is the full, declarative path from data to a trade: universe → 
 alpha/signal → sizing → risk → order placement. It is expressed in **exactly one format:
 JSON.** There is no second authoring format, no embedded code, and no monolithic callback.
 
-The suite **never stores strategies.** A strategy JSON is passed in at runtime, validated,
+The simulator **never stores strategies.** A strategy JSON is passed in at runtime, validated,
 compiled into an internal execution plan, executed, and discarded. Storage, versioning,
 user ownership, and selection all live in the trading platform. See
-[ADR-0005](../adr/0005-strategy-not-stored-suite-is-a-library.md) and
+[ADR-0005](../adr/0005-strategy-not-stored-simulator-is-a-library.md) and
 [ADR-0004](../adr/0004-strategy-json-pipeline.md).
 
 
@@ -57,7 +57,7 @@ unchanged in backtest and live.
 | Owns parameter *space*? | Yes (declares types + ranges) | Picks concrete *values* or a sweep over the declared space |
 
 A strategy declares *that* `rsi_period` is an int in `[5, 30]`; the run request decides whether
-this run uses `14`, or sweeps the whole range across the run queue. The suite receives both at
+this run uses `14`, or sweeps the whole range across the run queue. The simulator receives both at
 runtime.
 
 ---
@@ -88,7 +88,7 @@ not read a stage that runs after it.
 ```jsonc
 {
   "schema_version": "1.0",
-  "strategy_id": "user-supplied-id",      // echoed in results; NOT persisted by the suite
+  "strategy_id": "user-supplied-id",      // echoed in results; NOT persisted by the simulator
   "name": "RSI + News Sentiment Long",
   "description": "Long when oversold and sentiment is positive",
 
@@ -256,7 +256,7 @@ registry `ref`. Outputs are named for downstream binding. These are designed to 
 
 AI endpoints are **external by default** — pre-trained models, agent runtimes, or pipelines.
 The strategy *calls* an endpoint by ID, passes it the data it needs each time inference runs,
-and binds the outputs. The suite never stores weights or agent code. See
+and binds the outputs. The simulator never stores weights or agent code. See
 [model.md](INTG-002-ai-model-inference-port.md) and [ADR-0006](../adr/0006-model-inference-and-training.md).
 
 ### 8.1 Inference node
@@ -311,7 +311,7 @@ and binds the outputs. The suite never stores weights or agent code. See
 `outputs.value`, `fallback.policy`. Everything else is optional with defaults.
 
 **Look-ahead safety:** `inputs` and `input_window` may only reference data with
-`ts_event ≤ current_ts`. The suite enforces this; an endpoint literally cannot be handed future
+`ts_event ≤ current_ts`. The simulator enforces this; an endpoint literally cannot be handed future
 data.
 
 ---
@@ -334,11 +334,11 @@ block, see [run-request.md](DATA-002-run-request.md) §4c) and a `lookback` wind
 }
 ```
 
-At each inference call the suite collects, from each named stream, every record with
+At each inference call the simulator collects, from each named stream, every record with
 `ts_available ≤ current_ts` inside the window (capped by `max_items`), and hands the bundle to
 the injected AI endpoint alongside the structured `inputs`. For `MediaReference`/`DocumentSignal`
 items the bundle carries **references** (URIs + modality + any pre-extracted features); the
-**injected endpoint resolves the URIs and loads the raw bytes** — the suite never parses media.
+**injected endpoint resolves the URIs and loads the raw bytes** — the simulator never parses media.
 Look-ahead is enforced for the bundle (nothing with `ts_available > current_ts` appears), and the
 bundle is assembled deterministically. Full contract: [signals.md](DATA-005-signals-contract.md) §5.
 

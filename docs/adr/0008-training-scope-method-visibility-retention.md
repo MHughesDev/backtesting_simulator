@@ -24,7 +24,7 @@ orchestration as "async hot-swap," which over-stepped this repo's remit.
    depending on what the platform chose to train with), while the training code stays
    caller-owned. Mirrors how `model_id` works for inference.
 
-2. **Training visibility is limited to the strategy's bound features.** The suite builds the
+2. **Training visibility is limited to the strategy's bound features.** The simulator builds the
    training `FeatureFrame` from the strategy's declared feature bindings only — the same surface
    the model sees at inference. Training may not reach into arbitrary universe instruments or
    unreferenced streams. This bounds the leakage surface and guarantees train/serve consistency.

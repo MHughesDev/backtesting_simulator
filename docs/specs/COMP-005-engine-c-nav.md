@@ -29,7 +29,7 @@ impl Engine for NavEngine {
 
 Only market-style subscription/redemption orders are valid (no limit/stop on a NAV product).
 Account state is read from the injected `Account`
-([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 
 ---
 

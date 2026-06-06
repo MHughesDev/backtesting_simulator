@@ -36,11 +36,11 @@ Proposed → Accepted → (later) Superseded by ADR-XXXX
 | [0002](0002-minimal-external-dependencies.md) | Minimal external dependencies (own the contracts) | Accepted |
 | [0003](0003-capability-based-instrument-model.md) | Capability-based instrument model (asset ≠ engine) | Accepted |
 | [0004](0004-strategy-json-pipeline.md) | Strategy = a single JSON declarative pipeline | Accepted |
-| [0005](0005-strategy-not-stored-suite-is-a-library.md) | Suite processes but never stores strategies (library boundary) | Accepted |
+| [0005](0005-strategy-not-stored-simulator-is-a-library.md) | Simulator processes but never stores strategies (library boundary) | Accepted |
 | [0006](0006-model-inference-and-training.md) | AI models — inference by default, opt-in PIT training | Accepted |
 | [0007](0007-shared-training-pipeline-port.md) | Training is a shared pipeline invoked through a port | Proposed (refined by 0008) |
 | [0008](0008-training-scope-method-visibility-retention.md) | Training — method selection, visibility, retention, scope | Accepted |
 | [0009](0009-end-state-system-no-mvp.md) | Define the end-state system; no MVP scope | Accepted |
-| [0010](0010-suite-does-not-own-portfolio.md) | Suite does not own a portfolio — per-trade model + injected `Account` | Accepted |
+| [0010](0010-simulator-does-not-own-portfolio.md) | Simulator does not own a portfolio — per-trade model + injected `Account` | Accepted |
 | [0011](0011-component-registry-trust-model.md) | Component registry trust model — tiered, WASM sandbox for untrusted | Accepted |
 | [0012](0012-standalone-contracts-kernel.md) | Contracts are a standalone, dependency-free shared kernel | Accepted |

@@ -6,15 +6,15 @@
 **Date:** 2026-06-06
 **Author:** Agent
 
-A **Run Request** is the per-invocation document that tells the suite *how to execute one run*.
+A **Run Request** is the per-invocation document that tells the simulator *how to execute one run*.
 The **Strategy JSON** says *what the strategy is* (reusable, portable); the Run Request binds it
 to concrete data, time, parameters, and the injected ports for one execution. The bound
 `strategy` may be a single Strategy or a **Plan** (multiple strategies composed by data-flow —
 see [contracts/plan.md](DATA-007-plan-contract.md)); a single Strategy is the degenerate one-node Plan.
 
-The suite **stores nothing** and **assumes no portfolio** (see
-[ADR-0005](../adr/0005-strategy-not-stored-suite-is-a-library.md),
-[ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)). A Run Request wires in everything the
+The simulator **stores nothing** and **assumes no portfolio** (see
+[ADR-0005](../adr/0005-strategy-not-stored-simulator-is-a-library.md),
+[ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)). A Run Request wires in everything the
 run needs and is discarded when the run completes.
 
 
@@ -22,8 +22,8 @@ run needs and is discarded when the run completes.
 
 ## 1. The per-trade model (read first)
 
-The suite is a **per-trade execution simulator**, not a portfolio manager. For each decision
-the strategy makes, the suite produces a **TradeRecord**: the trade setup, the sizing decision,
+The simulator is a **per-trade execution simulator**, not a portfolio manager. For each decision
+the strategy makes, the simulator produces a **TradeRecord**: the trade setup, the sizing decision,
 and the simulated execution information (§7). It does **not** own a cash/position ledger or an
 equity curve.
 
@@ -36,7 +36,7 @@ caller:
 | `max_drawdown`, `max_position_pct` risk rules | equity, current positions |
 | perp/option margin & liquidation | collateral, margin balance |
 
-The suite owns the **mechanics** (sizing formulas, liquidation math, fill simulation); the
+The simulator owns the **mechanics** (sizing formulas, liquidation math, fill simulation); the
 caller owns the **ledger** (cash, positions, settlement, currency). A simple reference `Account`
 adapter ships as an *optional* convenience, but the core never assumes one.
 
@@ -92,13 +92,13 @@ adapter ships as an *optional* convenience, but the core never assumes one.
 ```
 
 Everything under `data`, `account`, `ai_endpoints`, `components` is an **injected port** —
-the caller supplies an implementation; the suite calls it. None of these are owned by the suite.
+the caller supplies an implementation; the simulator calls it. None of these are owned by the simulator.
 
 ---
 
 ## 4. `data` — injected market data
 
-The suite owns no data. The Run Request binds each instrument's required payload streams to a
+The simulator owns no data. The Run Request binds each instrument's required payload streams to a
 source the caller controls (a path, an in-memory Arrow table, or a `DataReader` implementation).
 
 Each binding entry uses a **descriptor object** (not a bare URI string) so the engine knows
@@ -165,7 +165,7 @@ The engine uses the descriptor to know what it has **before reading any data**, 
 can be derived vs. what is missing, run the Data Sufficiency Check (§10, step 7), and know what
 bar intervals can be derived from the provided data.
 
-The suite validates each binding against the instrument's **required-data manifest** (see
+The simulator validates each binding against the instrument's **required-data manifest** (see
 [contracts/market-data.md](DATA-004-market-data-contract.md) §3) and rejects under-specified runs.
 
 ### Caller-provided data always wins (precedence rule)
@@ -258,7 +258,7 @@ time-progression model. A bar derived inline is built only from events the simul
 already processed — it is never computed from future events.
 
 **Necessity-driven derivation (what gets derived):** the engine does **not** blindly derive every
-standard interval. At compile time the suite walks the compiled strategy plan (features → models →
+standard interval. At compile time the simulator walks the compiled strategy plan (features → models →
 alpha → sizing → risk → execution) and collects every data reference together with the concrete
 `(payload_class, interval)` it needs — e.g. `data:close` at the strategy's bar interval, an RSI
 feature's `period` over that interval, a model's `input_window` lookback. That set, plus whatever
@@ -366,7 +366,7 @@ Two non-negotiables for this plane (detail in [contracts/signals.md](DATA-005-si
   but effective at Y>X is actionable at X. Streams missing `ts_available` default it to `ts_event`.
 
 **Raw media** (`MediaReference`, `DocumentSignal` with a `uri`) is carried as a **point-in-time
-reference only** — the suite never loads or parses the bytes. The injected AI endpoint resolves
+reference only** — the simulator never loads or parses the bytes. The injected AI endpoint resolves
 the URI and performs multimodal inference (see [contracts/strategy.md](DATA-006-strategy-contract.md) §8
 `context_inputs`).
 
@@ -435,7 +435,7 @@ absolute-sizing strategy.
   "port": "injected:my_ledger",      // or "reference" for the shipped convenience adapter
   "config": {
     "base_currency": "USD",
-    "starting_balance": 100000,      // lives in the ACCOUNT, not the suite
+    "starting_balance": 100000,      // lives in the ACCOUNT, not the simulator
     "settlement": "T+2",             // caller's accounting rules
     "margin_model": "..."
   }
@@ -450,11 +450,11 @@ trait Account {
     fn buying_power(&self, ts: Timestamp) -> Decimal;
     fn position(&self, instrument: &InstrumentId) -> Position;
     fn collateral(&self, ts: Timestamp) -> Decimal;       // for margin/liquidation
-    fn apply_fill(&mut self, fill: &Fill);                // suite reports simulated fills here
+    fn apply_fill(&mut self, fill: &Fill);                // simulator reports simulated fills here
 }
 ```
 
-The suite **queries** it for sizing/risk/margin inputs and **reports** simulated fills to it. It
+The simulator **queries** it for sizing/risk/margin inputs and **reports** simulated fills to it. It
 never defines the accounting internals. The port must be deterministic (no hidden I/O).
 
 ---
@@ -487,16 +487,16 @@ The remaining caller-owned dependencies, wired per run:
 
 - `ai_endpoints` resolve the `endpoint_id@version` referenced in the strategy's `ai_endpoints`
   block (see [contracts/model.md](INTG-002-ai-model-inference-port.md)). Each entry declares an `adapter` (how the
-  suite calls the endpoint), an `endpoint_type` (informational: `model | agent_runtime | pipeline`),
+  simulator calls the endpoint), an `endpoint_type` (informational: `model | agent_runtime | pipeline`),
   and a `scope` (safety-critical: `data_scoped | archived_tools_only | live_external`). Endpoints
   declaring `live_external` are rejected at validation for all backtest runs.
 - `components` bind any custom registry components the strategy references (built-in ones need no binding).
 
 ---
 
-## 7. `output` — what the suite emits
+## 7. `output` — what the simulator emits
 
-The suite's primary output is the **TradeRecord stream** plus per-event valuation marks. Portfolio
+The simulator's primary output is the **TradeRecord stream** plus per-event valuation marks. Portfolio
 aggregation and metrics are computed downstream (by the caller, or by an optional analytics layer
 over the injected `Account`).
 
@@ -665,7 +665,7 @@ results.
 ## 11. Invariants
 
 1. **No assumed portfolio.** Account state is injected, never owned (ADR-0010).
-2. **Stateless suite.** Nothing persists across runs; `request_id`/`strategy_id` are echoed only.
+2. **Stateless simulator.** Nothing persists across runs; `request_id`/`strategy_id` are echoed only.
 3. **Deterministic.** Given identical Run Request + injected ports (themselves deterministic),
    results are byte-identical, regardless of thread count.
 4. **Point-in-time.** All bindings and ports may only expose `ts_event ≤ current_ts`. For
@@ -680,7 +680,7 @@ results.
 
 ## 12. Open questions
 
-- **Sweep search ownership (OD-2):** does grid/random/Bayesian search live in the suite's run
+- **Sweep search ownership (OD-2):** does grid/random/Bayesian search live in the simulator's run
   queue or the platform?
 - **Reference `Account` adapter scope:** how full-featured is the optional shipped ledger
   (single-currency cash only, or margin/multi-currency)?

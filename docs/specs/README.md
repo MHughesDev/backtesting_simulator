@@ -1,6 +1,6 @@
 # specs/
 
-Feature, component, data, integration, and system-overview specification files for the backtesting simulator. Specs define what something should do with enough precision for a developer (human or AI) to implement it, and for a tester to verify it.
+Feature, component, data, integration, and system-overview specification files for the trading simulator. Specs define what something should do with enough precision for a developer (human or AI) to implement it, and for a tester to verify it.
 
 > To add a new spec, follow the skill: `skills/create-spec.md` and procedure: `procedures/add-spec.md`.
 
@@ -30,7 +30,7 @@ Numbering is per type. The **Spec ID** is `<TYPE>-<NNN>`; cite any line as `<SPE
 
 | File | Spec ID | Type | Status | Related ADR(s) |
 |------|---------|------|--------|----------------|
-| [SYS-001-backtesting-simulator-overview.md](./SYS-001-backtesting-simulator-overview.md) | SYS-001 | System-overview | Approved | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0012 |
+| [SYS-001-trading-simulator-overview.md](./SYS-001-trading-simulator-overview.md) | SYS-001 | System-overview | Approved | ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0012 |
 | [DATA-001-data-taxonomy.md](./DATA-001-data-taxonomy.md) | DATA-001 | Data | Approved | — |
 | [DATA-002-run-request.md](./DATA-002-run-request.md) | DATA-002 | Data | Approved | ADR-0005, ADR-0010 |
 | [DATA-003-instrument-contract.md](./DATA-003-instrument-contract.md) | DATA-003 | Data | Approved | ADR-0003 |

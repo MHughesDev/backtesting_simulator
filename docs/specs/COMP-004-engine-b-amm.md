@@ -29,7 +29,7 @@ impl Engine for AmmEngine {
 `supports_order_type` returns `false` for `market`/`limit`/`stop`/etc. — submitting any of them
 is a compile-time contract error (see [engines/README.md](README.md) order-type matrix). Gas is
 a first-class P&L line; account state is read from the injected `Account`
-([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 
 ---
 

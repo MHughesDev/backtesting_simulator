@@ -1,7 +1,7 @@
 # Research
 
 Evidence behind the system's decisions. This folder is the audit trail: when an ADR or spec
-asserts something, the supporting work lives here. The suite owns no data, but it *does* own
+asserts something, the supporting work lives here. The simulator owns no data, but it *does* own
 the reasoning that shaped its contracts — and that reasoning should be reproducible.
 
 ## Folder convention

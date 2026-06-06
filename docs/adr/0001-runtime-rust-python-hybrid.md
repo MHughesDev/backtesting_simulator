@@ -7,11 +7,11 @@
 
 ## Context
 
-The suite must run realistic, event-driven, path-dependent simulations (order-book matching,
+The simulator must run realistic, event-driven, path-dependent simulations (order-book matching,
 AMM slippage, funding/liquidation, derivatives valuation) across many asset classes, minimize
 start-to-finish run latency, and run many backtests concurrently (a first-class run queue).
 At the same time, strategies and AI models are authored by humans *and* LLMs — both far more
-productive in Python — and the suite must be embeddable into a separate trading platform.
+productive in Python — and the simulator must be embeddable into a separate trading platform.
 
 These goals pull in two directions: raw per-event speed + safe parallelism (favoring a
 systems language) vs. authoring ergonomics + AI/data ecosystem (favoring Python).

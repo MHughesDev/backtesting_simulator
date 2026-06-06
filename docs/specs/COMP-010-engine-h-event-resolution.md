@@ -26,7 +26,7 @@ impl Engine for EventResolutionEngine {
 }
 ```
 
-Cash is in the injected `Account` ([ADR-0010](../adr/0010-suite-does-not-own-portfolio.md)).
+Cash is in the injected `Account` ([ADR-0010](../adr/0010-simulator-does-not-own-portfolio.md)).
 Per the order-type matrix, Engine H supports market orders; resting **limit** orders on the
 YES/NO book are a documented extension (real venues like Polymarket run a CLOB) — see §10.
 
