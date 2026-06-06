@@ -51,6 +51,6 @@ Two forces must be reconciled: (1) the suite must not own ML or store weights
   by refit caching, `freeze_after_first`, coarse schedules); reproducibility depends on the
   injected trainer honoring determinism; the run queue must budget for training cost.
 - **Open — repo topology (to confirm):** either (a) extract a standalone `*-contracts` package
-  that `backtesting_suite`, `training_pipelines`, and the platform all depend on; or (b) keep
+  that `backtesting_simulator`, `training_pipelines`, and the platform all depend on; or (b) keep
   the contracts in this repo's `crates/contracts` and have the training package depend on it.
   (a) maximizes reuse/parity; (b) is fewer moving parts. Tracked as OD-11.
