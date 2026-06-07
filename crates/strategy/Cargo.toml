@@ -1,0 +1,11 @@
+[package]
+name = "strategy"
+version = "0.1.0"
+edition = "2021"
+description = "Strategy trait and market view for the trading simulator."
+
+[dependencies]
+contracts = { path = "../contracts" }
+core_lib = { path = "../core" }
+serde = { workspace = true }
+rust_decimal = { workspace = true }

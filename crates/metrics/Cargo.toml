@@ -1,0 +1,11 @@
+[package]
+name = "metrics"
+version = "0.1.0"
+edition = "2021"
+description = "Trade metrics and performance statistics for the trading simulator."
+
+[dependencies]
+contracts = { path = "../contracts" }
+serde = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }

@@ -1,0 +1,13 @@
+[package]
+name = "pybind"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings skeleton for the trading simulator (Plan 0006)."
+
+[dependencies]
+contracts = { path = "../contracts" }
+core_lib = { path = "../core" }
+engines = { path = "../engines" }
+strategy = { path = "../strategy" }
+metrics = { path = "../metrics" }
+runner = { path = "../runner" }

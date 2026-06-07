@@ -1,0 +1,13 @@
+[package]
+name = "core_lib"
+version = "0.1.0"
+edition = "2021"
+description = "Core simulation infrastructure: clock, event stream, money, warmup gate, RNG."
+
+[dependencies]
+contracts = { path = "../contracts" }
+serde = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
