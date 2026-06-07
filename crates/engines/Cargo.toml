@@ -1,0 +1,13 @@
+[package]
+name = "engines"
+version = "0.1.0"
+edition = "2021"
+description = "Simulation engines. Engine A (CLOB/order book) is fully implemented; B-H are stubs."
+
+[dependencies]
+contracts = { path = "../contracts" }
+core_lib = { path = "../core" }
+serde = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }

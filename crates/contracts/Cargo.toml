@@ -1,0 +1,14 @@
+[package]
+name = "contracts"
+version = "0.1.0"
+edition = "2021"
+description = "Core contracts, types, and ports for the trading simulator. Zero intra-workspace dependencies."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }
+bitflags = { workspace = true }
+chrono = { workspace = true }

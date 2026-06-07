@@ -1,0 +1,16 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+description = "Run orchestration: RunRequest, validation, SingleRun, SimpleAccount."
+
+[dependencies]
+contracts = { path = "../contracts" }
+core_lib = { path = "../core" }
+engines = { path = "../engines" }
+strategy = { path = "../strategy" }
+metrics = { path = "../metrics" }
+serde = { workspace = true }
+rust_decimal = { workspace = true }
+rust_decimal_macros = { workspace = true }
+thiserror = { workspace = true }
